@@ -1,25 +1,28 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { useFocusEffect } from 'expo-router';
+import React,{ useCallback,useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  SafeAreaView,
-  TouchableOpacity,
-  RefreshControl,
-  Image,
-  ScrollView,
+FlatList,
+Image,
+RefreshControl,
+SafeAreaView,
+ScrollView,
+StyleSheet,
+Text,
+TouchableOpacity,
+View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import { Colors, Spacing, Typography } from '../theme/colors';
 import { DevotionalCard } from '../components/DevotionalCard';
-import { api, Devotional, Group } from '../services/api';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { api,Devotional,Group } from '../services/api';
+import { Colors,Spacing,Typography } from '../theme/colors';
 
 export const GroupFeedScreen: React.FC<{ navigation: any; route: any }> = ({
   navigation,
   route,
 }) => {
+  const { user } = useAuth();
+  const currentDay = user?.current_day;
   const initialGroupId = route.params?.groupId || null;
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(initialGroupId);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -37,7 +40,7 @@ export const GroupFeedScreen: React.FC<{ navigation: any; route: any }> = ({
     }
   };
 
-  const loadFeed = async (groupId: string | null = selectedGroupId) => {
+  const loadFeed = useCallback(async (groupId: string | null) => {
     try {
       const url = groupId ? `/api/devotionals/feed?groupId=${groupId}` : '/api/devotionals/feed';
       const res = await api.get(url);
@@ -52,7 +55,7 @@ export const GroupFeedScreen: React.FC<{ navigation: any; route: any }> = ({
         setActiveMembersToday(completedToday);
       } else {
         // Geral: buscar irmãos com post na data de hoje
-        const today = new Date().toISOString().slice(0, 10);
+        const today = currentDay || new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
         const todayPosts = res.data.filter((p: Devotional) => p.devotional_date === today);
         const uniqueUsers = Array.from(
           new Map(todayPosts.map((p: Devotional) => [p.user_id, p])).values()
@@ -64,13 +67,13 @@ export const GroupFeedScreen: React.FC<{ navigation: any; route: any }> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentDay]);
 
   useFocusEffect(
     useCallback(() => {
       loadGroups();
       loadFeed(selectedGroupId);
-    }, [selectedGroupId])
+    }, [selectedGroupId, loadFeed])
   );
 
   const onRefresh = async () => {

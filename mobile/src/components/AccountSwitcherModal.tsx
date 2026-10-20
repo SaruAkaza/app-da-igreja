@@ -1,17 +1,18 @@
+import { Alert } from '../services/alerts';
 import React from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  Modal,
-  ScrollView,
-  TouchableOpacity,
-  Image,
-  Alert,
+
+Image,
+Modal,
+ScrollView,
+StyleSheet,
+Text,
+TouchableOpacity,
+View,
 } from 'react-native';
-import { Colors, Spacing, Typography } from '../theme/colors';
-import { AccessibleButton } from './AccessibleButton';
 import { useAuth } from '../context/AuthContext';
+import { Colors,Spacing,Typography } from '../theme/colors';
+import { AccessibleButton } from './AccessibleButton';
 
 interface AccountSwitcherModalProps {
   visible: boolean;

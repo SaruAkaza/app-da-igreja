@@ -1,16 +1,15 @@
-import React, { useState } from 'react';
+import React,{ useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Modal,
-  SafeAreaView,
-  Image,
+Image,
+Modal,
+SafeAreaView,
+StyleSheet,
+Text,
+View
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { Colors, Spacing, Typography } from '../theme/colors';
 import { Coupon } from '../services/api';
+import { Colors,Spacing,Typography } from '../theme/colors';
 import { AccessibleButton } from './AccessibleButton';
 
 interface CouponCardProps {
@@ -20,7 +19,7 @@ interface CouponCardProps {
 export const CouponCard: React.FC<CouponCardProps> = ({ coupon }) => {
   const [qrModalVisible, setQrModalVisible] = useState(false);
 
-  const isUsed = coupon.status === 'used';
+  const isUsed = coupon.status !== 'active';
   const tierColor =
     coupon.tier === 'ouro'
       ? Colors.tierGold
@@ -60,12 +59,19 @@ export const CouponCard: React.FC<CouponCardProps> = ({ coupon }) => {
               { color: isUsed ? Colors.textMuted : Colors.success },
             ]}
           >
-            {isUsed ? 'UTILIZADO ✅' : 'DISPONÍVEL 🎉'}
+            {coupon.status === 'expired' ? 'EXPIRADO' : isUsed ? 'UTILIZADO' : 'DISPONÍVEL'}
           </Text>
         </View>
       </View>
 
       {/* Conteúdo do Prêmio */}
+      {coupon.group_title ? (
+        <View style={{ alignSelf: 'flex-start', backgroundColor: '#e8f5e9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginBottom: 6 }}>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: '#2e7d32' }}>
+            📍 Célula {coupon.group_title} {coupon.coupon_code?.includes('PODIO') ? '• 🏆 Pódio' : ''}
+          </Text>
+        </View>
+      ) : null}
       <Text style={styles.title}>{coupon.reward_title}</Text>
       {coupon.reward_description ? (
         <Text style={styles.description}>{coupon.reward_description}</Text>
@@ -79,7 +85,7 @@ export const CouponCard: React.FC<CouponCardProps> = ({ coupon }) => {
       {/* Mini QR Code Preview + Código */}
       <View style={styles.couponCodeContainer}>
         <View style={styles.qrThumbnail}>
-          {coupon.qr_code_data ? (
+          {coupon.qr_code_data?.startsWith('data:image/') ? (
             <Image
               source={{ uri: coupon.qr_code_data }}
               style={{ width: 70, height: 70 }}

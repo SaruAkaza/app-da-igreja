@@ -1,18 +1,23 @@
-import axios from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { create } from 'axios';
 import { Platform } from 'react-native';
+import { sessionStorage as AsyncStorage } from './storage';
 
-export const DEFAULT_API_URL = Platform.select({
+export const DEFAULT_API_URL = process.env.EXPO_PUBLIC_API_URL || Platform.select({
   android: 'http://10.0.2.2:3000',
-  default: 'http://localhost:3000',
+  default: Platform.OS === 'web' && typeof window !== 'undefined'
+    ? (window.location.port === '8081' ? window.location.protocol + '//' + window.location.hostname + ':3000' : window.location.origin)
+    : 'http://localhost:3000',
 });
 
-export const api = axios.create({
+export const api = create({
   baseURL: DEFAULT_API_URL,
   timeout: 15000,
 });
 
 export const setApiBaseUrl = async (newUrl: string) => {
+  const parsed = new URL(newUrl.trim());
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) throw new Error('Informe um endereço HTTP ou HTTPS válido, sem caminho ou senha.');
+  newUrl = parsed.origin;
   api.defaults.baseURL = newUrl;
   await AsyncStorage.setItem('church_custom_api_url', newUrl);
 };
@@ -26,7 +31,7 @@ export const initApiConfig = async () => {
 
 api.interceptors.request.use(async (config) => {
   const token = await AsyncStorage.getItem('church_auth_token');
-  if (token) {
+  if (token && !config.headers.Authorization) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
@@ -39,6 +44,7 @@ export const formatImageUrl = (path: string | undefined): string => {
 };
 
 export interface User {
+  current_day?: string;
   id: string;
   church_id: string | null;
   church_name?: string | null;
@@ -133,6 +139,10 @@ export interface GroupRanking {
   avg_streak: number;
   avg_points_per_member: number;
   badge?: string | null;
+  cycle_start_date?: string;
+  cycle_end_date?: string;
+  cycle_status?: string;
+  cycle_closed_at?: string;
 }
 
 export interface ChallengeLeaderboardItem {
@@ -172,6 +182,11 @@ export interface Reward {
   points_remaining: number;
   already_claimed: boolean;
   coupon_code?: string;
+  group_id?: string | null;
+  group_title?: string | null;
+  is_member_of_group?: boolean;
+  reward_type?: 'points' | 'podium';
+  podium_position?: number | null;
 }
 
 export interface Coupon {
@@ -187,4 +202,8 @@ export interface Coupon {
   points_required: number;
   partner_name: string;
   quarter_title: string;
+  group_id?: string | null;
+  group_title?: string | null;
+  reward_type?: 'points' | 'podium';
+  podium_position?: number | null;
 }

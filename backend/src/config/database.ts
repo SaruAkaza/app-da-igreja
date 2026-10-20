@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { dataDir } from './runtime.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -6,7 +7,6 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const dataDir = path.resolve(__dirname, '../../data');
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
@@ -84,6 +84,10 @@ export function initDatabase() {
       book_or_theme TEXT NOT NULL,
       cover_image TEXT,
       invite_code TEXT UNIQUE NOT NULL,
+      cycle_start_date TEXT,
+      cycle_end_date TEXT,
+      cycle_status TEXT DEFAULT 'active', -- 'active', 'completed'
+      cycle_closed_at TEXT,
       created_at TEXT NOT NULL,
       FOREIGN KEY (church_id) REFERENCES churches(id) ON DELETE CASCADE,
       FOREIGN KEY (leader_id) REFERENCES users(id) ON DELETE SET NULL
@@ -163,6 +167,9 @@ export function initDatabase() {
       id TEXT PRIMARY KEY,
       quarter_id TEXT NOT NULL,
       church_id TEXT NOT NULL,
+      group_id TEXT, -- NULL para geral da igreja, ou ID do grupo/célula
+      reward_type TEXT NOT NULL DEFAULT 'points', -- 'points', 'podium'
+      podium_position INTEGER, -- 1, 2 ou 3 para prêmios de pódio
       title TEXT NOT NULL,
       description TEXT,
       tier TEXT NOT NULL, -- 'bronze', 'prata', 'ouro', 'especial'
@@ -170,7 +177,8 @@ export function initDatabase() {
       partner_name TEXT NOT NULL,
       created_at TEXT NOT NULL,
       FOREIGN KEY (quarter_id) REFERENCES quarters(id) ON DELETE CASCADE,
-      FOREIGN KEY (church_id) REFERENCES churches(id) ON DELETE CASCADE
+      FOREIGN KEY (church_id) REFERENCES churches(id) ON DELETE CASCADE,
+      FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE SET NULL
     );
 
     -- 10. Cupons Digitais Emitidos aos Membros
@@ -264,6 +272,11 @@ export function initDatabase() {
   `);
 
   runMigrations();
+  const columns = db.prepare('PRAGMA table_info(users)').all() as { name: string }[];
+  if (!columns.some(c => c.name === 'session_version')) db.exec('ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_devotional_daily ON devotionals(user_id, group_id, devotional_date)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_coupon_reward ON user_coupons(user_id, reward_id)');
+  db.pragma('busy_timeout = 5000');
   console.log('✅ Banco de dados Multi-Igrejas SQLite inicializado com sucesso.');
 }
 
@@ -275,48 +288,22 @@ function runMigrations() {
     // Se church_id for not null, relaxar restrição
     const churchIdCol = userColumns.find((c) => c.name === 'church_id');
     if (churchIdCol && churchIdCol.notnull === 1) {
-      db.exec(`
-        PRAGMA foreign_keys = OFF;
-        CREATE TABLE users_temp AS SELECT * FROM users;
-        DROP TABLE users;
-        CREATE TABLE users (
-          id TEXT PRIMARY KEY,
-          church_id TEXT,
-          name TEXT NOT NULL,
-          last_name TEXT,
-          username_handle TEXT UNIQUE,
-          age INTEGER,
-          parent_phone TEXT,
-          parent_consent_verified INTEGER DEFAULT 0,
-          parent_consent_code TEXT,
-          parent_consent_date TEXT,
-          email TEXT UNIQUE NOT NULL,
-          email_verified INTEGER DEFAULT 0,
-          verification_code TEXT,
-          verification_code_expires_at TEXT,
-          password_hash TEXT NOT NULL,
-          address_street TEXT,
-          address_neighborhood TEXT,
-          address_city TEXT,
-          address_state TEXT,
-          address_zipcode TEXT,
-          profile_completion_percent INTEGER DEFAULT 0,
-          profile_bonus_awarded INTEGER DEFAULT 0,
-          role TEXT NOT NULL DEFAULT 'member',
-          current_streak INTEGER NOT NULL DEFAULT 0,
-          highest_streak INTEGER NOT NULL DEFAULT 0,
-          last_devotional_date TEXT,
-          total_points INTEGER NOT NULL DEFAULT 0,
-          avatar_url TEXT,
-          created_at TEXT NOT NULL,
-          FOREIGN KEY (church_id) REFERENCES churches(id) ON DELETE CASCADE
-        );
-        INSERT INTO users (id, church_id, name, email, password_hash, role, current_streak, highest_streak, last_devotional_date, total_points, avatar_url, created_at)
-        SELECT id, church_id, name, email, password_hash, role, current_streak, highest_streak, last_devotional_date, total_points, avatar_url, created_at FROM users_temp;
-        DROP TABLE users_temp;
-        PRAGMA foreign_keys = ON;
-      `);
+      const definition = (db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'").get() as { sql: string }).sql;
+      const indexes = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'users' AND sql IS NOT NULL").all() as { sql: string }[];
+      const relaxed = definition.replace(/church_id\s+TEXT\s+NOT\s+NULL/i, 'church_id TEXT').replace(/CREATE TABLE\s+(?:IF NOT EXISTS\s+)?["\[]?users["\]]?/i, 'CREATE TABLE users_migrating');
+      if (relaxed === definition) throw new Error('Não foi possível migrar users com segurança.');
+      db.pragma('foreign_keys = OFF');
+      try {
+        db.transaction(() => {
+          db.exec(relaxed);
+          db.exec('INSERT INTO users_migrating SELECT * FROM users');
+          db.exec('DROP TABLE users');
+          db.exec('ALTER TABLE users_migrating RENAME TO users');
+          indexes.forEach(index => db.exec(index.sql));
+        })();
+      } finally { db.pragma('foreign_keys = ON'); }
       console.log('🔄 Tabela users migrada com church_id opcional.');
+      runMigrations();
       return;
     }
 
@@ -358,60 +345,20 @@ function runMigrations() {
     addColIfMissing('churches', 'phone', 'TEXT', churchColNames);
     addColIfMissing('churches', 'address_full', 'TEXT', churchColNames);
 
-    // Enriquecer dados dos usuários existentes caso ainda não possuam handle e 100% de perfil
-    db.exec(`
-      UPDATE users SET 
-        last_name = CASE 
-          WHEN email = 'admin@igreja.com' THEN 'Almeida'
-          WHEN email = 'lider@igreja.com' THEN 'Oliveira'
-          WHEN email = 'maria@igreja.com' THEN 'de Lourdes'
-          WHEN email = 'joao@igreja.com' THEN 'Pedro'
-          WHEN email = 'pastor.silas@memorial.com' THEN 'Batista'
-          WHEN email = 'lucas@memorial.com' THEN 'Mendes'
-          WHEN email = 'raquel@memorial.com' THEN 'Santos'
-          ELSE COALESCE(last_name, 'Silva')
-        END,
-        username_handle = CASE 
-          WHEN email = 'admin@igreja.com' THEN '@pastor.davi'
-          WHEN email = 'lider@igreja.com' THEN '@lider.marcos'
-          WHEN email = 'maria@igreja.com' THEN '@dona.maria'
-          WHEN email = 'joao@igreja.com' THEN '@joao.pedro'
-          WHEN email = 'pastor.silas@memorial.com' THEN '@pastor.silas'
-          WHEN email = 'lucas@memorial.com' THEN '@lider.lucas'
-          WHEN email = 'raquel@memorial.com' THEN '@raquel.santos'
-          ELSE COALESCE(username_handle, '@' || substr(email, 1, instr(email, '@') - 1))
-        END,
-        age = CASE 
-          WHEN email = 'maria@igreja.com' THEN 68
-          WHEN email = 'joao@igreja.com' THEN 17
-          WHEN email = 'raquel@memorial.com' THEN 22
-          ELSE COALESCE(age, 35)
-        END,
-        parent_phone = CASE 
-          WHEN email = 'joao@igreja.com' THEN '11988887777'
-          ELSE parent_phone
-        END,
-        parent_consent_verified = CASE 
-          WHEN email = 'joao@igreja.com' THEN 1
-          ELSE parent_consent_verified
-        END,
-        email_verified = 1,
-        address_street = COALESCE(address_street, 'Rua das Oliveiras, 100'),
-        address_neighborhood = COALESCE(address_neighborhood, 'Jardim da Fé'),
-        address_city = COALESCE(address_city, 'São Paulo'),
-        address_state = COALESCE(address_state, 'SP'),
-        address_zipcode = COALESCE(address_zipcode, '01000-000'),
-        profile_completion_percent = 100,
-        profile_bonus_awarded = 1
-      WHERE profile_completion_percent IS NULL OR profile_completion_percent = 0;
+    // Novas colunas de groups (Ciclo de Leitura)
+    const groupColumns = db.prepare('PRAGMA table_info(groups)').all() as { name: string }[];
+    const groupColNames = new Set(groupColumns.map((c) => c.name));
+    addColIfMissing('groups', 'cycle_start_date', 'TEXT', groupColNames);
+    addColIfMissing('groups', 'cycle_end_date', 'TEXT', groupColNames);
+    addColIfMissing('groups', 'cycle_status', "TEXT DEFAULT 'active'", groupColNames);
+    addColIfMissing('groups', 'cycle_closed_at', 'TEXT', groupColNames);
 
-      UPDATE churches SET
-        cnpj = CASE WHEN slug_code = 'VIDEIRA26' THEN '12.345.678/0001-90' ELSE NULL END,
-        phone = '(11) 98765-4321',
-        address_full = 'Av. das Nações Unidas, 1000 - São Paulo, SP'
-      WHERE phone IS NULL;
-    `);
-  } catch (err) {
-    console.error('Erro na migração:', err);
-  }
+    // Novas colunas de rewards (Vínculo a grupo e Pódio)
+    const rewardColumns = db.prepare('PRAGMA table_info(rewards)').all() as { name: string }[];
+    const rewardColNames = new Set(rewardColumns.map((c) => c.name));
+    addColIfMissing('rewards', 'group_id', 'TEXT', rewardColNames);
+    addColIfMissing('rewards', 'reward_type', "TEXT DEFAULT 'points'", rewardColNames);
+    addColIfMissing('rewards', 'podium_position', 'INTEGER', rewardColNames);
+
+  } catch (err) { throw err; }
 }

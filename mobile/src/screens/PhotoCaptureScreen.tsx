@@ -1,22 +1,24 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  TextInput,
-  Alert,
-  TouchableOpacity,
-  Image,
-  Platform,
-} from 'react-native';
+import { Alert } from '../services/alerts';
 import * as ImagePicker from 'expo-image-picker';
-import { Colors, Spacing, Typography } from '../theme/colors';
+import { useFocusEffect } from 'expo-router';
+import React,{ useCallback,useState } from 'react';
+import {
+
+Image,
+Platform,
+SafeAreaView,
+ScrollView,
+StyleSheet,
+Text,
+TextInput,
+TouchableOpacity,
+View,
+} from 'react-native';
 import { AccessibleButton } from '../components/AccessibleButton';
 import { PhotoReviewModal } from '../components/PhotoReviewModal';
-import { api, Group } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { api,Group } from '../services/api';
+import { Colors,Spacing,Typography } from '../theme/colors';
 
 export const PhotoCaptureScreen: React.FC<{ navigation: any; route: any }> = ({
   navigation,
@@ -29,27 +31,24 @@ export const PhotoCaptureScreen: React.FC<{ navigation: any; route: any }> = ({
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(preselectedGroupId);
   const [passageOrChapter, setPassageOrChapter] = useState('');
   const [notes, setNotes] = useState('');
+  const [imageAsset, setImageAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [submitMessage, setSubmitMessage] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
 
   // Modal acessível de confirmação de nitidez para idosos
   const [reviewModalVisible, setReviewModalVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    loadMyGroups();
-  }, []);
-
-  const loadMyGroups = async () => {
+  const loadMyGroups = useCallback(async () => {
     try {
       const res = await api.get('/api/groups/my');
       setGroups(res.data);
-      if (!selectedGroupId && res.data.length > 0) {
-        setSelectedGroupId(res.data[0].id);
-      }
+      setSelectedGroupId(current => preselectedGroupId || (res.data.find((g: Group) => g.id === current && !g.posted_today) ? current : res.data.find((g: Group) => !g.posted_today)?.id || null));
     } catch (e) {
       console.error('Erro ao carregar grupos:', e);
     }
-  };
+  }, [preselectedGroupId]);
+  useFocusEffect(useCallback(() => { void loadMyGroups(); }, [loadMyGroups]));
 
   const handleLaunchCamera = async () => {
     try {
@@ -63,12 +62,13 @@ export const PhotoCaptureScreen: React.FC<{ navigation: any; route: any }> = ({
       }
 
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: false,
         quality: 0.85,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
+        setImageAsset(result.assets[0]);
         setImageUri(result.assets[0].uri);
         setReviewModalVisible(true);
       }
@@ -81,12 +81,13 @@ export const PhotoCaptureScreen: React.FC<{ navigation: any; route: any }> = ({
   const handleLaunchGallery = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: false,
         quality: 0.85,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
+        setImageAsset(result.assets[0]);
         setImageUri(result.assets[0].uri);
         setReviewModalVisible(true);
       }
@@ -106,7 +107,10 @@ export const PhotoCaptureScreen: React.FC<{ navigation: any; route: any }> = ({
       Alert.alert('Selecione o Grupo', 'Escolha para qual grupo de estudo você está enviando esta anotação.');
       return;
     }
+    if (!passageOrChapter.trim()) { setReviewModalVisible(false); setSubmitMessage('Informe a passagem bíblica ou o capítulo antes de enviar.'); return; }
 
+    if (submitting) return;
+    setSubmitMessage('');
     setSubmitting(true);
     try {
       const formData = new FormData();
@@ -114,22 +118,21 @@ export const PhotoCaptureScreen: React.FC<{ navigation: any; route: any }> = ({
       formData.append('passageOrChapter', passageOrChapter.trim());
       formData.append('notes', notes.trim());
 
-      const filename = imageUri.split('/').pop() || 'folha_devocional.jpg';
+      const filename = imageAsset?.fileName || 'folha_devocional.jpg';
       const match = /\.(\w+)$/.exec(filename);
-      const type = match ? `image/${match[1]}` : 'image/jpeg';
+      const type = imageAsset?.mimeType || (match?.[1] === 'png' ? 'image/png' : 'image/jpeg');
 
-      formData.append('photo', {
-        uri: Platform.OS === 'ios' ? imageUri.replace('file://', '') : imageUri,
-        name: filename,
-        type,
-      } as any);
-
-      const res = await api.post('/api/devotionals', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      if (Platform.OS === 'web') {
+        const blob = await (await fetch(imageUri)).blob();
+        formData.append('photo', blob, filename);
+      } else formData.append('photo', { uri: imageUri, name: filename, type } as any);
+      const res = await api.post('/api/devotionals', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
 
       setReviewModalVisible(false);
       await refreshProfile();
+      setSubmitMessage('Devocional registrado! Acompanhe sua leitura na comunidade.');
+      setImageUri(null); setImageAsset(null); setNotes(''); setPassageOrChapter('');
+      await loadMyGroups();
 
       const { points_earned, user_stats, unlocked_coupons } = res.data;
 
@@ -148,6 +151,8 @@ export const PhotoCaptureScreen: React.FC<{ navigation: any; route: any }> = ({
       ]);
     } catch (err: any) {
       const errorMsg = err.response?.data?.error || 'Erro ao enviar foto do devocional.';
+      setReviewModalVisible(false);
+      setSubmitMessage(errorMsg);
       Alert.alert('Não foi possível enviar', errorMsg);
     } finally {
       setSubmitting(false);
@@ -164,6 +169,8 @@ export const PhotoCaptureScreen: React.FC<{ navigation: any; route: any }> = ({
           </Text>
         </View>
 
+        {submitMessage ? <Text accessibilityRole="alert" style={{ color: Colors.primary, padding: 16, lineHeight: 24 }}>{submitMessage}</Text> : null}
+        {groups.length === 0 ? <AccessibleButton title="Entrar em um grupo de leitura" onPress={() => navigation.navigate('Explore')} /> : null}
         {/* Escolha do Grupo de Estudo */}
         <View style={styles.card}>
           <Text style={styles.label}>1. ESCOLHA O GRUPO DESTE DEVOCIONAL</Text>
@@ -171,6 +178,8 @@ export const PhotoCaptureScreen: React.FC<{ navigation: any; route: any }> = ({
             {groups.map((g) => (
               <TouchableOpacity
                 key={g.id}
+                disabled={Boolean(g.posted_today)}
+                accessibilityLabel={g.title + (g.posted_today ? ' · já registrado hoje' : '')}
                 onPress={() => setSelectedGroupId(g.id)}
                 style={[
                   styles.groupChip,
@@ -183,7 +192,7 @@ export const PhotoCaptureScreen: React.FC<{ navigation: any; route: any }> = ({
                     selectedGroupId === g.id && styles.groupChipTextActive,
                   ]}
                 >
-                  {g.title}
+                  {g.title}{g.posted_today ? ' ✓' : ''}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -251,6 +260,7 @@ export const PhotoCaptureScreen: React.FC<{ navigation: any; route: any }> = ({
 
       {/* Modal Acessível com confirmação "Tirar Outra" vs "Tudo Certo, Enviar!" */}
       <PhotoReviewModal
+        onClose={() => setReviewModalVisible(false)}
         visible={reviewModalVisible}
         imageUri={imageUri}
         onRetake={() => {

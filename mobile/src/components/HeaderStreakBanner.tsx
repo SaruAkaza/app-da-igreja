@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
-import { Colors, Spacing, Typography } from '../theme/colors';
+import { Image,StyleSheet,Text,TouchableOpacity,View } from 'react-native';
 import { User } from '../services/api';
+import { Colors,Spacing,Typography } from '../theme/colors';
 
 interface HeaderStreakBannerProps {
   user: User | null;

@@ -1,14 +1,14 @@
 import React from 'react';
 import {
-  Modal,
-  View,
-  Text,
-  Image,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
+Image,
+Modal,
+SafeAreaView,
+ScrollView,
+StyleSheet,
+Text,
+View,
 } from 'react-native';
-import { Colors, Spacing, Typography } from '../theme/colors';
+import { Colors,Spacing,Typography } from '../theme/colors';
 import { AccessibleButton } from './AccessibleButton';
 
 interface PhotoReviewModalProps {
@@ -16,6 +16,7 @@ interface PhotoReviewModalProps {
   imageUri: string | null;
   onRetake: () => void;
   onConfirm: () => void;
+  onClose: () => void;
   isSubmitting?: boolean;
 }
 
@@ -24,18 +25,19 @@ export const PhotoReviewModal: React.FC<PhotoReviewModalProps> = ({
   imageUri,
   onRetake,
   onConfirm,
+  onClose,
   isSubmitting = false,
 }) => {
   if (!imageUri) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent={false}>
+    <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.header}>
             <Text style={styles.title}>Confirmação da Folha</Text>
             <Text style={styles.subtitle}>
-              Verifique se a sua escrita manuscrita ficou bem legível para os irmãos do grupo.
+              Verifique se a sua escrita ficou legível para a liderança responsável.
             </Text>
           </View>
 
@@ -55,7 +57,7 @@ export const PhotoReviewModal: React.FC<PhotoReviewModalProps> = ({
               Sua anotação ficou nítida e legível?
             </Text>
             <Text style={styles.questionHint}>
-              Se a imagem estiver tremida ou escura, toque em "Tirar Outra".
+              Se a imagem estiver tremida ou escura, toque em &quot;Tirar Outra&quot;.
             </Text>
           </View>
 
@@ -78,6 +80,7 @@ export const PhotoReviewModal: React.FC<PhotoReviewModalProps> = ({
               disabled={isSubmitting}
               style={styles.secondaryButton}
             />
+            <AccessibleButton title="Voltar aos dados da leitura" variant="outline" onPress={onClose} disabled={isSubmitting} />
           </View>
         </ScrollView>
       </SafeAreaView>

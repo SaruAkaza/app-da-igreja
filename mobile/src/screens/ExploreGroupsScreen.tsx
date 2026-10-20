@@ -1,20 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import { Alert } from '../services/alerts';
+import { useFocusEffect } from 'expo-router';
+import React,{ useCallback,useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  TextInput,
-  TouchableOpacity,
-  Alert,
-  Image,
-  RefreshControl,
+
+Image,
+RefreshControl,
+SafeAreaView,
+ScrollView,
+StyleSheet,
+Text,
+TextInput,
+View
 } from 'react-native';
-import { Colors, Spacing, Typography } from '../theme/colors';
 import { AccessibleButton } from '../components/AccessibleButton';
-import { api, Group } from '../services/api';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { api,Group } from '../services/api';
+import { Colors,Spacing,Typography } from '../theme/colors';
 
 export const ExploreGroupsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [groups, setGroups] = useState<Group[]>([]);
@@ -22,18 +23,15 @@ export const ExploreGroupsScreen: React.FC<{ navigation: any }> = ({ navigation 
   const [refreshing, setRefreshing] = useState(false);
   const [joining, setJoining] = useState(false);
 
-  const loadAllGroups = async () => {
+  const loadAllGroups = useCallback(async () => {
     try {
       const res = await api.get('/api/groups');
       setGroups(res.data);
     } catch (e) {
       console.error('Erro ao listar grupos:', e);
     }
-  };
-
-  useEffect(() => {
-    loadAllGroups();
   }, []);
+  useFocusEffect(useCallback(() => { void loadAllGroups(); }, [loadAllGroups]));
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -62,7 +60,7 @@ export const ExploreGroupsScreen: React.FC<{ navigation: any }> = ({ navigation 
 
   const handleJoinById = async (groupId: string, title: string) => {
     try {
-      const res = await api.post('/api/groups/join', { groupId });
+      await api.post('/api/groups/join', { groupId });
       Alert.alert('Bem-vindo(a)!', `Você agora faz parte do grupo "${title}".`);
       await loadAllGroups();
     } catch (err: any) {

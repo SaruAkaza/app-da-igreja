@@ -1,22 +1,22 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useFocusEffect } from 'expo-router';
+import React,{ useCallback,useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  RefreshControl,
-  Image,
+Image,
+RefreshControl,
+SafeAreaView,
+ScrollView,
+StyleSheet,
+Text,
+View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import { Colors, Spacing, Typography } from '../theme/colors';
-import { api, LeaderFeedback } from '../services/api';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { api,LeaderFeedback } from '../services/api';
+import { Colors,Spacing,Typography } from '../theme/colors';
 
 export const FeedbacksScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [feedbacks, setFeedbacks] = useState<LeaderFeedback[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
 
   const loadFeedbacks = async () => {
     try {
@@ -91,7 +91,7 @@ export const FeedbacksScreen: React.FC<{ navigation: any }> = ({ navigation }) =
               </View>
 
               <View style={styles.guidanceBox}>
-                <Text style={styles.guidanceQuote}>"{fb.pastoral_guidance}"</Text>
+                <Text style={styles.guidanceQuote}>&quot;{fb.pastoral_guidance}&quot;</Text>
               </View>
             </View>
           ))

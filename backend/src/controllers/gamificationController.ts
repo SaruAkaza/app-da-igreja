@@ -1,3 +1,5 @@
+import { issueCoupons } from '../services/rewards.js';
+import { localDay, previousDay } from '../config/runtime.js';
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { db } from '../config/database.js';
@@ -81,11 +83,16 @@ export const getGroupsRanking = (req: Request, res: Response) => {
         g.title,
         g.category,
         g.book_or_theme,
+        g.invite_code,
         g.cover_image,
+        g.cycle_start_date,
+        g.cycle_end_date,
+        g.cycle_status,
+        g.cycle_closed_at,
         u.name AS leader_name,
         COUNT(DISTINCT gm.user_id) AS total_members,
         COUNT(DISTINCT d.id) AS total_devotionals,
-        COALESCE(SUM(d.points_awarded), 0) AS total_group_points,
+        COALESCE((SELECT SUM(dp.points_awarded) FROM devotionals dp WHERE dp.group_id = g.id), 0) AS total_group_points,
         COALESCE(AVG(mem.current_streak), 0) AS avg_streak
       FROM groups g
       LEFT JOIN users u ON u.id = g.leader_id
@@ -122,8 +129,9 @@ export const getRewards = (req: Request, res: Response) => {
 
     const user = db.prepare('SELECT total_points FROM users WHERE id = ?').get(userId) as any;
     const userPoints = user ? user.total_points : 0;
+    issueCoupons(userId!, churchId!);
 
-    const quarter = db.prepare('SELECT * FROM quarters WHERE church_id = ? AND is_active = 1 LIMIT 1').get(churchId) as any;
+    const quarter = db.prepare('SELECT * FROM quarters WHERE church_id = ? AND is_active = 1 AND start_date <= ? AND end_date >= ? LIMIT 1').get(churchId, localDay(), localDay()) as any;
     if (!quarter) {
       return res.json({ quarter: null, rewards: [] });
     }
@@ -131,24 +139,37 @@ export const getRewards = (req: Request, res: Response) => {
     const rewards = db.prepare(`
       SELECT 
         r.*,
+        g.title AS group_title,
+        CASE 
+          WHEN r.group_id IS NULL THEN 1 
+          ELSE EXISTS(SELECT 1 FROM group_members gm WHERE gm.group_id = r.group_id AND gm.user_id = ?)
+        END AS is_member_of_group,
         EXISTS(SELECT 1 FROM user_coupons uc WHERE uc.reward_id = r.id AND uc.user_id = ?) AS already_claimed,
         (SELECT uc.status FROM user_coupons uc WHERE uc.reward_id = r.id AND uc.user_id = ? LIMIT 1) AS coupon_status,
         (SELECT uc.coupon_code FROM user_coupons uc WHERE uc.reward_id = r.id AND uc.user_id = ? LIMIT 1) AS coupon_code
       FROM rewards r
+      LEFT JOIN groups g ON g.id = r.group_id
       WHERE r.quarter_id = ? AND r.church_id = ?
-      ORDER BY r.points_required ASC
-    `).all(userId, userId, userId, quarter.id, churchId) as any[];
+      ORDER BY 
+        CASE WHEN r.group_id IS NOT NULL THEN 0 ELSE 1 END,
+        r.reward_type ASC,
+        r.podium_position ASC,
+        r.points_required ASC
+    `).all(userId, userId, userId, userId, quarter.id, churchId) as any[];
 
     const rewardsWithProgress = rewards.map((rew) => {
-      const progressPercent = Math.min(100, Math.round((userPoints / rew.points_required) * 100));
-      const unlocked = userPoints >= rew.points_required;
+      const isPodium = rew.reward_type === 'podium';
+      const progressPercent = isPodium 
+        ? (rew.already_claimed ? 100 : 0)
+        : Math.min(100, Math.round((userPoints / Math.max(1, rew.points_required)) * 100));
+      const unlocked = isPodium ? !!rew.already_claimed : (userPoints >= rew.points_required && !!rew.is_member_of_group);
 
       return {
         ...rew,
         user_points: userPoints,
         progress_percent: progressPercent,
         unlocked,
-        points_remaining: Math.max(0, rew.points_required - userPoints),
+        points_remaining: isPodium ? 0 : Math.max(0, rew.points_required - userPoints),
       };
     });
 
@@ -168,12 +189,13 @@ export const getMyCoupons = (req: Request, res: Response) => {
     const userId = req.user?.id;
     const churchId = req.user?.church_id;
 
+    issueCoupons(userId!, churchId!);
     const coupons = db.prepare(`
       SELECT 
         uc.id,
         uc.coupon_code,
         uc.qr_code_data,
-        uc.status,
+        CASE WHEN uc.status = 'active' AND (q.end_date < '${localDay()}' OR q.is_active = 0) THEN 'expired' ELSE uc.status END AS status,
         uc.redeemed_at,
         uc.created_at,
         r.title AS reward_title,
@@ -181,10 +203,15 @@ export const getMyCoupons = (req: Request, res: Response) => {
         r.tier,
         r.points_required,
         r.partner_name,
+        r.group_id,
+        r.reward_type,
+        r.podium_position,
+        g.title AS group_title,
         q.title AS quarter_title
       FROM user_coupons uc
       INNER JOIN rewards r ON r.id = uc.reward_id
       INNER JOIN quarters q ON q.id = r.quarter_id
+      LEFT JOIN groups g ON g.id = r.group_id
       WHERE uc.user_id = ? AND uc.church_id = ?
       ORDER BY 
         CASE uc.status WHEN 'active' THEN 1 ELSE 2 END,
@@ -208,7 +235,7 @@ export const validateAndRedeemCoupon = (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Informe o código do cupom ou leia o QR Code.' });
     }
 
-    const cleanCode = couponCode.trim();
+    const cleanCode = couponCode.trim().toUpperCase();
 
     const coupon = db.prepare(`
       SELECT 
@@ -228,6 +255,8 @@ export const validateAndRedeemCoupon = (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Cupom inválido ou não pertencente a esta igreja.' });
     }
 
+    const period = db.prepare('SELECT q.end_date, q.is_active FROM rewards r JOIN quarters q ON q.id = r.quarter_id WHERE r.id = ?').get(coupon.reward_id) as any;
+    if (coupon.status === 'expired' || !period?.is_active || period.end_date < localDay()) return res.status(400).json({ error: 'Este cupom está expirado.' });
     if (coupon.status === 'used') {
       return res.status(400).json({
         error: `Este cupom já foi resgatado em ${coupon.redeemed_at}.`,
@@ -240,7 +269,7 @@ export const validateAndRedeemCoupon = (req: Request, res: Response) => {
     db.prepare(`
       UPDATE user_coupons
       SET status = 'used', redeemed_at = ?, redeemed_by_leader_id = ?
-      WHERE id = ?
+      WHERE id = ? AND status = 'active'
     `).run(now, leaderId, coupon.id);
 
     return res.json({
@@ -321,7 +350,8 @@ export const createInterChurchChallenge = (req: Request, res: Response) => {
     }
 
     const challengeId = `chal-${crypto.randomUUID()}`;
-    const cleanCode = (title.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8) + '26').toUpperCase();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || endDate < startDate || title.trim().length < 3) return res.status(400).json({ error: 'Confira o título e as datas da jornada.' });
+    const cleanCode = 'JORNADA-' + crypto.randomBytes(4).toString('hex').toUpperCase();
     const now = new Date().toISOString();
 
     db.prepare(`

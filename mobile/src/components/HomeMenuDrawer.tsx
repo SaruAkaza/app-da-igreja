@@ -1,19 +1,19 @@
-import React, { useState } from 'react';
+import { Alert } from '../services/alerts';
+import React,{ useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  Modal,
-  ScrollView,
-  TouchableOpacity,
-  Switch,
-  Alert,
-  TextInput,
+
+Modal,
+ScrollView,
+StyleSheet,
+Switch,
+Text,
+TextInput,
+TouchableOpacity,
+View,
 } from 'react-native';
-import { Colors, Spacing, Typography } from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
+import { Colors,Spacing,Typography } from '../theme/colors';
 import { AccessibleButton } from './AccessibleButton';
-import { api } from '../services/api';
 
 interface HomeMenuDrawerProps {
   visible: boolean;
@@ -57,13 +57,9 @@ export const HomeMenuDrawer: React.FC<HomeMenuDrawerProps> = ({
     try {
       const code = churchOrCellCode.trim().toUpperCase();
       // Tentar vincular por célula ou igreja
-      if (code.includes('CELULA') || code.includes('TIAGO') || code.includes('JOVENS') || code.includes('PROVERBIOS')) {
-        await joinGroupByCode(code);
-        Alert.alert('Sucesso!', `Você entrou na célula com o código ${code}!`);
-      } else {
-        await joinChurch(code);
-        Alert.alert('Sucesso!', `Você vinculou-se à congregação ${code}!`);
-      }
+      try { await joinGroupByCode(code); }
+      catch (error: any) { if (error.response?.status !== 404) throw error; await joinChurch(code); }
+      Alert.alert('Tudo certo!', 'Seu vínculo com a comunidade foi atualizado.');
       setJoinModalVisible(false);
       setChurchOrCellCode('');
       onClose();
@@ -218,6 +214,29 @@ export const HomeMenuDrawer: React.FC<HomeMenuDrawerProps> = ({
                 </View>
                 <Text style={styles.menuItemArrow}>›</Text>
               </TouchableOpacity>
+
+              {/* 6. Painel do Administrador (Exclusivo para Pastores e Admins da Igreja) */}
+              {user?.role === 'church_admin' || user?.role === 'super_admin' ? (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    onClose();
+                    if (typeof window !== 'undefined' && window.open) {
+                      window.open('http://localhost:3000/admin/', '_blank');
+                    } else {
+                      Alert.alert('Painel da Igreja', 'Acesse pelo navegador em: http://localhost:3000/admin/');
+                    }
+                  }}
+                  style={[styles.menuItem, { backgroundColor: '#f0f6ec', borderColor: '#bcd8ba', borderWidth: 1 }]}
+                >
+                  <Text style={styles.menuItemIcon}>💻</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.menuItemTitle, { color: Colors.primaryDark }]}>Painel da Igreja (Web)</Text>
+                    <Text style={styles.menuItemSub}>Gerenciar congregação, cargos, células e prêmios</Text>
+                  </View>
+                  <Text style={[styles.menuItemArrow, { color: Colors.primary }]}>↗</Text>
+                </TouchableOpacity>
+              ) : null}
 
               {/* Seção de Acessibilidade & Contas */}
               <Text style={[styles.menuSectionTitle, { marginTop: 16 }]}>PREFERÊNCIAS & FAMÍLIA</Text>

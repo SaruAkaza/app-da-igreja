@@ -1,19 +1,19 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useFocusEffect } from 'expo-router';
+import React,{ useCallback,useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  RefreshControl,
-  TouchableOpacity,
+RefreshControl,
+SafeAreaView,
+ScrollView,
+StyleSheet,
+Text,
+TouchableOpacity,
+View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import { Colors, Spacing, Typography } from '../theme/colors';
-import { useAuth } from '../context/AuthContext';
 import { CouponCard } from '../components/CouponCard';
-import { api, Reward, Coupon } from '../services/api';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { useAuth } from '../context/AuthContext';
+import { api,Coupon,Reward } from '../services/api';
+import { Colors,Spacing,Typography } from '../theme/colors';
 
 export const RewardsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { user, refreshProfile } = useAuth();
@@ -23,7 +23,7 @@ export const RewardsScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'coupons' | 'catalog'>('coupons');
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       await refreshProfile();
       const [rewardsRes, couponsRes] = await Promise.all([
@@ -39,12 +39,12 @@ export const RewardsScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
     } catch (e) {
       console.error('Erro ao carregar recompensas:', e);
     }
-  };
+  }, [refreshProfile]);
 
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [])
+    }, [loadData])
   );
 
   const onRefresh = async () => {
@@ -147,40 +147,85 @@ export const RewardsScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
         {/* Conteúdo Aba: Catálogo de Metas */}
         {activeTab === 'catalog' && (
           <View style={styles.catalogSection}>
-            {rewards.map((rew) => (
-              <View key={rew.id} style={styles.rewardCard}>
-                <View style={styles.rewardTop}>
-                  <View style={styles.rewardBadgeWrapper}>
-                    <Text style={styles.rewardTierBadge}>
-                      {rew.tier === 'ouro' ? '🥇 NÍVEL OURO' : rew.tier === 'prata' ? '🥈 NÍVEL PRATA' : '🥉 NÍVEL BRONZE'}
-                    </Text>
-                  </View>
-                  <Text style={styles.rewardPointsRequired}>
-                    {rew.points_required.toLocaleString('pt-BR')} pts
-                  </Text>
-                </View>
-
-                <Text style={styles.rewardTitle}>{rew.title}</Text>
-                <Text style={styles.rewardDesc}>{rew.description}</Text>
-                <Text style={styles.rewardPartner}>📍 Parceiro: {rew.partner_name}</Text>
-
-                {/* Barra individual */}
-                <View style={styles.rewardProgressBar}>
-                  <View style={[styles.rewardProgressFill, { width: `${rew.progress_percent}%` }]} />
-                </View>
-
-                <View style={styles.rewardFooter}>
-                  {rew.unlocked ? (
-                    <Text style={styles.unlockedText}>✅ Meta Alcançada! Cupom emitido</Text>
-                  ) : (
-                    <Text style={styles.lockedText}>
-                      Faltam {rew.points_remaining} pontos para alcançar
-                    </Text>
-                  )}
-                  <Text style={styles.percentText}>{rew.progress_percent}%</Text>
-                </View>
+            {rewards.length === 0 ? (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyIcon}>🏆</Text>
+                <Text style={styles.emptyTitle}>Nenhum prêmio cadastrado</Text>
+                <Text style={styles.emptySubtitle}>
+                  O catálogo da temporada estará disponível em breve com prêmios da sua igreja e da sua célula!
+                </Text>
               </View>
-            ))}
+            ) : (
+              rewards.map((rew) => {
+                const isPodium = rew.reward_type === 'podium';
+                return (
+                  <View key={rew.id} style={styles.rewardCard}>
+                    <View style={styles.rewardTop}>
+                      <View style={styles.rewardBadgeWrapper}>
+                        <Text style={styles.rewardTierBadge}>
+                          {isPodium
+                            ? `🏆 ${rew.podium_position === 1 ? '🥇 1º' : rew.podium_position === 2 ? '🥈 2º' : '🥉 3º'} LUGAR (PÓDIO)`
+                            : rew.tier === 'ouro'
+                            ? '🥇 NÍVEL OURO'
+                            : rew.tier === 'prata'
+                            ? '🥈 NÍVEL PRATA'
+                            : '🥉 NÍVEL BRONZE'}
+                        </Text>
+                      </View>
+                      {rew.group_title && (
+                        <View style={styles.cellBadge}>
+                          <Text style={styles.cellBadgeText}>📍 {rew.group_title}</Text>
+                        </View>
+                      )}
+                      <Text style={styles.rewardPointsRequired}>
+                        {isPodium ? 'Pódio do Ciclo' : `${rew.points_required.toLocaleString('pt-BR')} pts`}
+                      </Text>
+                    </View>
+
+                    <Text style={styles.rewardTitle}>{rew.title}</Text>
+                    {!!rew.description && <Text style={styles.rewardDesc}>{rew.description}</Text>}
+                    <Text style={styles.rewardPartner}>📍 Retirada: {rew.partner_name}</Text>
+
+                    {/* Barra de progresso para prêmios por pontos */}
+                    {!isPodium ? (
+                      <>
+                        <View style={styles.rewardProgressBar}>
+                          <View
+                            style={[
+                              styles.rewardProgressFill,
+                              { width: `${rew.progress_percent}%` },
+                            ]}
+                          />
+                        </View>
+
+                        <View style={styles.rewardFooter}>
+                          {rew.unlocked ? (
+                            <Text style={styles.unlockedText}>✅ Meta Alcançada! Cupom emitido</Text>
+                          ) : (
+                            <Text style={styles.lockedText}>
+                              Faltam {rew.points_remaining} pontos para alcançar
+                            </Text>
+                          )}
+                          <Text style={styles.percentText}>{rew.progress_percent}%</Text>
+                        </View>
+                      </>
+                    ) : (
+                      <View style={styles.rewardFooter}>
+                        {rew.already_claimed ? (
+                          <Text style={styles.unlockedText}>
+                            🎉 Parabéns! Você conquistou este pódio e seu cupom foi emitido!
+                          </Text>
+                        ) : (
+                          <Text style={styles.lockedText}>
+                            🏅 Em disputa no ciclo da célula! Os cupons são entregues no encerramento da temporada aos 3 primeiros.
+                          </Text>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                );
+              })
+            )}
           </View>
         )}
 
@@ -188,10 +233,10 @@ export const RewardsScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
         <View style={styles.infoCard}>
           <Text style={styles.infoTitle}>ℹ️ Como Resgatar Seus Prêmios:</Text>
           <Text style={styles.infoItem}>
-            1. No culto ou na livraria da igreja, abra a aba "Meus Cupons".
+            1. No culto ou na livraria da igreja, abra a aba &quot;Meus Cupons&quot;.
           </Text>
           <Text style={styles.infoItem}>
-            2. Toque em "Apresentar QR Code no Culto" para exibir na tela.
+            2. Toque em &quot;Apresentar QR Code no Culto&quot; para exibir na tela.
           </Text>
           <Text style={styles.infoItem}>
             3. O líder ou atendente lerá o código com o celular e dará baixa instantânea no seu prêmio!
@@ -347,6 +392,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
+  },
+  cellBadge: {
+    backgroundColor: '#e8f5e9',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#c8e6c9',
+  },
+  cellBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#2e7d32',
   },
   rewardTierBadge: {
     fontSize: 10,

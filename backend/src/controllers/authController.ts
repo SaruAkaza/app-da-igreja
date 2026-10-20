@@ -1,3 +1,4 @@
+import { localDay, previousDay } from '../config/runtime.js';
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
@@ -6,11 +7,11 @@ import { generateToken, UserRole } from '../middleware/auth.js';
 
 // Validação de senha forte (mínimo 8 caracteres, letras, números e caracteres especiais)
 export function validateStrongPassword(password: string): { valid: boolean; reason?: string } {
-  if (!password || password.length < 8) {
-    return { valid: false, reason: 'A senha deve conter no mínimo 8 caracteres.' };
+  if (typeof password !== 'string' || password.length < 8 || Buffer.byteLength(password, 'utf8') > 72) {
+    return { valid: false, reason: 'Use uma senha de pelo menos 8 caracteres e até 72 bytes.' };
   }
-  if (!/[a-zA-Z]/.test(password)) {
-    return { valid: false, reason: 'A senha deve conter pelo menos uma letra.' };
+  if (!/[a-z]/.test(password) || !/[A-Z]/.test(password)) {
+    return { valid: false, reason: 'Inclua letras maiúsculas e minúsculas na senha.' };
   }
   if (!/[0-9]/.test(password)) {
     return { valid: false, reason: 'A senha deve conter pelo menos um número.' };
@@ -97,164 +98,6 @@ export function calculateProfileCompletion(userData: {
 }
 
 // 1. Solicitar código de verificação 2FA (6 dígitos) para e-mail
-export const requestCode = async (req: Request, res: Response) => {
-  try {
-    const { email } = req.body;
-    if (!email) {
-      return res.status(400).json({ error: 'Informe o endereço de e-mail.' });
-    }
-
-    const cleanEmail = email.trim().toLowerCase();
-    // Gerar código numérico de 6 dígitos
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 minutos
-    const now = new Date().toISOString();
-
-    db.prepare(`
-      INSERT INTO email_verifications (email, code, expires_at, verified, created_at)
-      VALUES (?, ?, ?, 0, ?)
-      ON CONFLICT(email) DO UPDATE SET
-        code = excluded.code,
-        expires_at = excluded.expires_at,
-        verified = 0,
-        created_at = excluded.created_at
-    `).run(cleanEmail, code, expiresAt, now);
-
-    console.log(`📧 [2FA Email] Código de 6 dígitos para ${cleanEmail}: ${code}`);
-
-    return res.json({
-      message: `Código de verificação de 6 dígitos enviado para ${cleanEmail}.`,
-      expires_at: expiresAt,
-      // Retornado para facilitar testes no ambiente de homologação/demonstração
-      dev_code: code,
-    });
-  } catch (err: any) {
-    console.error('Erro em requestCode:', err);
-    return res.status(500).json({ error: 'Erro ao gerar código de verificação.' });
-  }
-};
-
-// 2. Validar código 2FA de e-mail (6 dígitos)
-export const verifyCode = async (req: Request, res: Response) => {
-  try {
-    const { email, code } = req.body;
-    if (!email || !code) {
-      return res.status(400).json({ error: 'E-mail e código são obrigatórios.' });
-    }
-
-    const cleanEmail = email.trim().toLowerCase();
-    const record = db.prepare('SELECT * FROM email_verifications WHERE email = ?').get(cleanEmail) as any;
-
-    if (!record) {
-      return res.status(404).json({ error: 'Nenhum código solicitado para este e-mail.' });
-    }
-
-    if (new Date() > new Date(record.expires_at)) {
-      return res.status(400).json({ error: 'Código expirado. Por favor, solicite um novo código.' });
-    }
-
-    if (record.code !== code.toString().trim()) {
-      return res.status(400).json({ error: 'Código de 6 dígitos inválido. Confira e tente novamente.' });
-    }
-
-    db.prepare('UPDATE email_verifications SET verified = 1 WHERE email = ?').run(cleanEmail);
-
-    return res.json({
-      valid: true,
-      message: 'E-mail validado com sucesso via confirmação em duas etapas (2FA)!',
-    });
-  } catch (err: any) {
-    console.error('Erro em verifyCode:', err);
-    return res.status(500).json({ error: 'Erro ao validar código.' });
-  }
-};
-
-// 3. Enviar consentimento parental para responsável via WhatsApp (4 dígitos)
-export const sendParentalConsent = async (req: Request, res: Response) => {
-  try {
-    const { childName, parentPhone, churchName } = req.body;
-
-    if (!childName || !parentPhone) {
-      return res.status(400).json({ error: 'Nome do filho(a) e telefone do responsável são obrigatórios.' });
-    }
-
-    const cleanPhone = parentPhone.replace(/\D/g, '');
-    if (cleanPhone.length < 10) {
-      return res.status(400).json({ error: 'Informe um número de telefone com DDD válido (mínimo 10 dígitos).' });
-    }
-
-    // Código numérico de 4 dígitos fácil para os pais
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hora
-    const now = new Date().toISOString();
-
-    db.prepare(`
-      INSERT INTO parental_consents (parent_phone, code, child_name, verified, expires_at, created_at)
-      VALUES (?, ?, ?, 0, ?, ?)
-      ON CONFLICT(parent_phone) DO UPDATE SET
-        code = excluded.code,
-        child_name = excluded.child_name,
-        expires_at = excluded.expires_at,
-        verified = 0,
-        created_at = excluded.created_at
-    `).run(cleanPhone, code, childName.trim(), expiresAt, now);
-
-    const congregaText = churchName ? ` na ${churchName}` : '';
-    const message = `Paz do Senhor! Seu filho(a) ${childName.trim()} solicitou cadastro no App Devocional da Igreja${congregaText}. Seu código de autorização é: [ ${code} ]. Ao repassar este código ao menor, você declara estar ciente e autoriza sua participação nas leituras e gincanas devocionais de acordo com nossos Termos de Uso e LGPD.`;
-    const whatsappUrl = `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(message)}`;
-
-    console.log(`📱 [Consentimento WhatsApp] Código de 4 dígitos para ${cleanPhone}: ${code}`);
-
-    return res.json({
-      message: 'Código de autorização parental gerado com sucesso.',
-      parent_phone: cleanPhone,
-      code_length: 4,
-      whatsapp_message: message,
-      whatsapp_url: whatsappUrl,
-      dev_code: code,
-    });
-  } catch (err: any) {
-    console.error('Erro em sendParentalConsent:', err);
-    return res.status(500).json({ error: 'Erro ao gerar autorização parental.' });
-  }
-};
-
-// 4. Validar código de consentimento parental (4 dígitos)
-export const verifyParentalConsent = async (req: Request, res: Response) => {
-  try {
-    const { parentPhone, code } = req.body;
-    if (!parentPhone || !code) {
-      return res.status(400).json({ error: 'Telefone e código são obrigatórios.' });
-    }
-
-    const cleanPhone = parentPhone.replace(/\D/g, '');
-    const record = db.prepare('SELECT * FROM parental_consents WHERE parent_phone = ?').get(cleanPhone) as any;
-
-    if (!record) {
-      return res.status(404).json({ error: 'Nenhuma autorização solicitada para este telefone.' });
-    }
-
-    if (new Date() > new Date(record.expires_at)) {
-      return res.status(400).json({ error: 'Código expirado. Solicite uma nova mensagem pelo WhatsApp.' });
-    }
-
-    if (record.code !== code.toString().trim()) {
-      return res.status(400).json({ error: 'Código de 4 dígitos incorreto.' });
-    }
-
-    db.prepare('UPDATE parental_consents SET verified = 1 WHERE parent_phone = ?').run(cleanPhone);
-
-    return res.json({
-      verified: true,
-      message: 'Autorização dos pais confirmada com sucesso!',
-    });
-  } catch (err: any) {
-    console.error('Erro em verifyParentalConsent:', err);
-    return res.status(500).json({ error: 'Erro ao validar autorização parental.' });
-  }
-};
-
-// 5. Cadastro Completo com 2FA, Handle Único, Senha Forte e Bônus de 100%
 export const register = async (req: Request, res: Response) => {
   try {
     const {
@@ -276,7 +119,7 @@ export const register = async (req: Request, res: Response) => {
       churchCode,
     } = req.body;
 
-    if (!name || !email || !password) {
+    if (!name?.trim() || name.length > 100 || !email || !password) {
       return res.status(400).json({ error: 'Preencha os campos obrigatórios (nome, email e senha).' });
     }
 
@@ -296,7 +139,8 @@ export const register = async (req: Request, res: Response) => {
     }
 
     // Regra de menor de idade (< 18 anos)
-    const numAge = age ? Number(age) : 0;
+    const numAge = Number(age);
+    if (!Number.isInteger(numAge) || numAge < 1 || numAge > 120) return res.status(400).json({ error: 'Informe uma idade válida.' });
     let parentVerified = 0;
     if (numAge > 0 && numAge < 18) {
       if (!parentPhone) {
@@ -304,9 +148,9 @@ export const register = async (req: Request, res: Response) => {
       }
       const cleanPhone = parentPhone.replace(/\D/g, '');
       const consent = db.prepare('SELECT * FROM parental_consents WHERE parent_phone = ?').get(cleanPhone) as any;
-      if (consent && (consent.verified === 1 || consent.code === parentConsentCode?.toString().trim())) {
+      if (consent && consent.verified === 1 && consent.expires_at > new Date().toISOString() && consent.child_name.toLowerCase() === name.trim().toLowerCase()) {
         parentVerified = 1;
-      }
+      } else return res.status(400).json({ error: 'A autorização do responsável precisa ser confirmada.' });
     }
 
     // Formatação de Handle (@handle)
@@ -322,8 +166,9 @@ export const register = async (req: Request, res: Response) => {
     }
 
     // Verificar se e-mail foi validado por 2FA
-    const verification = db.prepare('SELECT verified FROM email_verifications WHERE email = ?').get(cleanEmail) as { verified: number } | undefined;
-    const emailVerified = verification ? verification.verified : 1; // Se cadastrou via fluxo com sucesso
+    const verification = db.prepare('SELECT verified, expires_at FROM email_verifications WHERE email = ?').get(cleanEmail) as { verified: number; expires_at: string } | undefined;
+    if (!verification?.verified || verification.expires_at < new Date().toISOString()) return res.status(400).json({ error: 'Confirme seu e-mail antes de concluir o cadastro.' });
+    const emailVerified = 1;
 
     // Vincular à igreja caso fornecido código
     let church: any = null;
@@ -334,7 +179,8 @@ export const register = async (req: Request, res: Response) => {
     const userId = `usr-${crypto.randomUUID()}`;
     const passwordHash = await bcrypt.hash(password, 10);
     const now = new Date().toISOString();
-    const defaultAvatar = avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(name + ' ' + (lastName || ''))}&background=2563eb&color=fff&size=200`;
+    if (churchCode && !church) return res.status(400).json({ error: 'Código de igreja inválido.' });
+    const defaultAvatar = avatarUrl || '';
 
     // Calcular percentual do perfil
     const completionData = {
@@ -485,13 +331,15 @@ export const updateProfile = async (req: Request, res: Response) => {
     }
 
     const newAge = age !== undefined ? Number(age) : currentUser.age;
+    if (!newName || newName.length > 100 || (newAge && (!Number.isInteger(newAge) || newAge < 1 || newAge > 120))) return res.status(400).json({ error: 'Confira o nome e a idade.' });
+    if (newHandle && db.prepare('SELECT id FROM users WHERE LOWER(username_handle) = ? AND id != ?').get(newHandle, userId)) return res.status(409).json({ error: 'Este nome de usuário já está em uso.' });
     const newParentPhone = parentPhone !== undefined ? parentPhone.trim() : currentUser.parent_phone;
     let parentVerified = currentUser.parent_consent_verified;
 
     if (newAge > 0 && newAge < 18 && newParentPhone) {
       const cleanPhone = newParentPhone.replace(/\D/g, '');
       const consent = db.prepare('SELECT * FROM parental_consents WHERE parent_phone = ?').get(cleanPhone) as any;
-      if (consent && (consent.verified === 1 || consent.code === parentConsentCode?.toString().trim())) {
+      if (consent && consent.verified === 1 && consent.expires_at > new Date().toISOString() && consent.child_name.toLowerCase() === newName.toLowerCase()) {
         parentVerified = 1;
       }
     }
@@ -608,41 +456,6 @@ export const updateProfile = async (req: Request, res: Response) => {
 };
 
 // 7. Esqueci Minha Senha - Enviar código de 6 dígitos
-export const forgotPassword = async (req: Request, res: Response) => {
-  try {
-    const { email } = req.body;
-    if (!email) {
-      return res.status(400).json({ error: 'Informe o e-mail cadastrado.' });
-    }
-
-    const cleanEmail = email.trim().toLowerCase();
-    const user = db.prepare('SELECT id, name FROM users WHERE email = ?').get(cleanEmail) as any;
-
-    if (!user) {
-      return res.status(404).json({ error: 'Nenhuma conta encontrada com este e-mail.' });
-    }
-
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 min
-
-    db.prepare(`
-      UPDATE users SET verification_code = ?, verification_code_expires_at = ? WHERE id = ?
-    `).run(code, expiresAt, user.id);
-
-    console.log(`🔑 [Recuperação de Senha] Código de 6 dígitos para ${cleanEmail}: ${code}`);
-
-    return res.json({
-      message: `Código de recuperação de 6 dígitos enviado para ${cleanEmail}.`,
-      expires_at: expiresAt,
-      dev_code: code,
-    });
-  } catch (err: any) {
-    console.error('Erro em forgotPassword:', err);
-    return res.status(500).json({ error: 'Erro ao solicitar recuperação de senha.' });
-  }
-};
-
-// 8. Redefinir Senha com Código e Senha Forte
 export const resetPassword = async (req: Request, res: Response) => {
   try {
     const { email, code, newPassword, confirmPassword } = req.body;
@@ -677,7 +490,7 @@ export const resetPassword = async (req: Request, res: Response) => {
 
     const newHash = await bcrypt.hash(newPassword, 10);
     db.prepare(`
-      UPDATE users SET password_hash = ?, verification_code = NULL, verification_code_expires_at = NULL WHERE id = ?
+      UPDATE users SET password_hash = ?, verification_code = NULL, verification_code_expires_at = NULL, session_version = session_version + 1 WHERE id = ?
     `).run(newHash, user.id);
 
     return res.json({
@@ -749,7 +562,7 @@ export const registerChurch = async (req: Request, res: Response) => {
       );
 
       const userId = `usr-${crypto.randomUUID()}`;
-      const defaultAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(pastorName)}&background=1e40af&color=fff&size=200`;
+      const defaultAvatar = '';
       const passwordHash = bcrypt.hashSync(password, 10);
       let pastorHandle = `@pastor.${pastorName.toLowerCase().replace(/\s+/g, '.')}`;
       const existingHandle = db.prepare('SELECT id FROM users WHERE username_handle = ?').get(pastorHandle);
@@ -828,6 +641,7 @@ export const joinChurchByCode = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Código de igreja não encontrado. Verifique com seu pastor ou líder.' });
     }
 
+    if (req.user?.church_id && req.user.church_id !== church.id) return res.status(409).json({ error: 'Sua conta já pertence a outra igreja. Solicite a transferência ao administrador.' });
     db.prepare('UPDATE users SET church_id = ? WHERE id = ?').run(church.id, userId);
 
     // Ingressar no primeiro grupo da igreja se não estiver em nenhum
@@ -914,12 +728,18 @@ export const login = async (req: Request, res: Response) => {
     }
 
     const cleanIdentifier = email.trim().toLowerCase();
+    const withAt = cleanIdentifier.startsWith('@') ? cleanIdentifier : `@${cleanIdentifier}`;
+    const withoutAt = cleanIdentifier.replace(/^@/, '');
     const user = db.prepare(`
       SELECT u.*, c.name AS church_name, c.slug_code AS church_code, c.logo_url AS church_logo
       FROM users u
       LEFT JOIN churches c ON c.id = u.church_id
-      WHERE LOWER(u.email) = ? OR LOWER(u.username_handle) = ?
-    `).get(cleanIdentifier, cleanIdentifier) as any;
+      WHERE LOWER(u.email) = ? 
+         OR LOWER(u.email) = ?
+         OR LOWER(u.username_handle) = ? 
+         OR LOWER(u.username_handle) = ? 
+         OR LOWER(u.username_handle) = ?
+    `).get(cleanIdentifier, cleanIdentifier + '@igreja.com', cleanIdentifier, withAt, withoutAt) as any;
 
     if (!user) {
       return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
@@ -931,7 +751,7 @@ export const login = async (req: Request, res: Response) => {
     }
 
     // Verificar quebra de streak
-    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const yesterday = previousDay();
     let streak = user.current_streak;
     if (user.last_devotional_date && user.last_devotional_date < yesterday) {
       streak = 0;
@@ -990,7 +810,7 @@ export const getMe = (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Usuário não encontrado.' });
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDay();
     const completedToday = user.last_devotional_date === today;
 
     // Resumo de cupons ativos
@@ -1015,11 +835,13 @@ export const getMe = (req: Request, res: Response) => {
     });
 
     return res.json({
-      ...user,
+      ...Object.fromEntries(Object.entries(user).filter(([key]) => !['password_hash', 'verification_code', 'verification_code_expires_at', 'parent_consent_code', 'session_version'].includes(key))),
+      current_streak: user.last_devotional_date && user.last_devotional_date >= previousDay() ? user.current_streak : 0,
       profile_completion_percent: percent,
       profile_bonus_awarded: user.profile_bonus_awarded === 1,
       missing_profile_fields: missing,
       completed_today: completedToday,
+      current_day: today,
       active_coupons_count: activeCouponsCount.count,
       total_devotionals_count: totalDevotionalsCount.count,
       feedbacks_count: feedbacksCount.count,
@@ -1029,3 +851,5 @@ export const getMe = (req: Request, res: Response) => {
     return res.status(500).json({ error: 'Erro ao buscar perfil.' });
   }
 };
+
+export { requestCode, verifyCode, forgotPassword, sendParentalConsent, verifyParentalConsent } from './verificationController.js';

@@ -1,19 +1,21 @@
-import React, { useState } from 'react';
+import { Alert } from '../services/alerts';
+import React,{ useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  StyleSheet,
+  ActivityIndicator,
+  Clipboard,
   Modal,
   ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
   TouchableOpacity,
-  Alert,
-  Clipboard,
+  View,
 } from 'react-native';
-import { Colors, Spacing, Typography } from '../theme/colors';
-import { AccessibleButton } from './AccessibleButton';
-import { api } from '../services/api';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
+import { cleanCep, formatCep, searchCep } from '../services/cep';
+import { Colors,Spacing,Typography } from '../theme/colors';
+import { AccessibleButton } from './AccessibleButton';
 
 interface ChurchRegisterModalProps {
   visible: boolean;
@@ -37,6 +39,53 @@ export const ChurchRegisterModal: React.FC<ChurchRegisterModalProps> = ({ visibl
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // CEP Search State
+  const [churchCep, setChurchCep] = useState('');
+  const [cepSearching, setCepSearching] = useState(false);
+  const [cepStatus, setCepStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [lastSearchedCep, setLastSearchedCep] = useState('');
+
+  const handleCepChange = (text: string) => {
+    const formatted = formatCep(text);
+    setChurchCep(formatted);
+    const digits = cleanCep(text);
+    if (digits.length === 8 && digits !== lastSearchedCep) {
+      void handleSearchCep(digits);
+    }
+  };
+
+  const handleSearchCep = async (rawToSearch: string) => {
+    const digits = cleanCep(rawToSearch);
+    if (digits.length !== 8) {
+      setCepStatus({ type: 'error', message: 'Digite os 8 dígitos do CEP.' });
+      return;
+    }
+    setCepSearching(true);
+    setCepStatus(null);
+    setLastSearchedCep(digits);
+    try {
+      const res = await searchCep(digits);
+      if (res.city) setCity(res.city);
+      if (res.state) setState(res.state);
+      if (res.street || res.neighborhood) {
+        const full = [res.street, res.neighborhood].filter(Boolean).join(' - ');
+        setAddressFull(full);
+      }
+      setChurchCep(res.cep);
+      setCepStatus({
+        type: 'success',
+        message: `Endereço localizado via Correios: ${res.street ? res.street + ', ' : ''}${res.neighborhood || ''} - ${res.city}/${res.state}`,
+      });
+    } catch (err: any) {
+      setCepStatus({
+        type: 'error',
+        message: err.message || 'CEP não encontrado. Preencha manualmente.',
+      });
+    } finally {
+      setCepSearching(false);
+    }
+  };
 
   // Success State
   const [createdChurch, setCreatedChurch] = useState<any>(null);
@@ -172,6 +221,50 @@ export const ChurchRegisterModal: React.FC<ChurchRegisterModalProps> = ({ visibl
                 </View>
               </View>
               <Text style={styles.hint}>ℹ️ O CNPJ é opcional para igrejas e células em fase de formalização.</Text>
+
+              {/* Busca de CEP via Correios */}
+              <View style={styles.cepRow}>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={styles.label}>CEP DO TEMPLO (CORREIOS)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="01001-000"
+                    keyboardType="numeric"
+                    maxLength={9}
+                    value={churchCep}
+                    onChangeText={handleCepChange}
+                  />
+                </View>
+                <TouchableOpacity
+                  style={[styles.cepSearchBtn, cepSearching && styles.cepSearchBtnDisabled]}
+                  onPress={() => void handleSearchCep(churchCep)}
+                  disabled={cepSearching}
+                  accessibilityRole="button"
+                  accessibilityLabel="Buscar CEP nos Correios"
+                >
+                  {cepSearching ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="search-outline" size={16} color="#fff" />
+                      <Text style={styles.cepSearchBtnText}>Buscar CEP</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              {cepStatus ? (
+                <View style={[styles.cepStatusBox, cepStatus.type === 'success' ? styles.cepSuccess : styles.cepError]}>
+                  <Ionicons
+                    name={cepStatus.type === 'success' ? 'checkmark-circle-outline' : 'alert-circle-outline'}
+                    size={16}
+                    color={cepStatus.type === 'success' ? Colors.success : Colors.danger}
+                  />
+                  <Text style={[styles.cepStatusText, cepStatus.type === 'success' ? styles.cepSuccessText : styles.cepErrorText]}>
+                    {cepStatus.message}
+                  </Text>
+                </View>
+              ) : null}
 
               <Text style={styles.label}>CIDADE DO TEMPLO</Text>
               <TextInput
@@ -442,5 +535,55 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: '700',
     fontSize: Typography.bodySmall,
+  },
+  cepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginBottom: 4,
+  },
+  cepSearchBtn: {
+    backgroundColor: Colors.primary,
+    height: 48,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  cepSearchBtnDisabled: {
+    opacity: 0.6,
+  },
+  cepSearchBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  cepStatusBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderRadius: 8,
+    marginVertical: 4,
+    gap: 6,
+  },
+  cepSuccess: {
+    backgroundColor: Colors.accentSurface,
+  },
+  cepError: {
+    backgroundColor: '#fde8e8',
+  },
+  cepStatusText: {
+    fontSize: 11,
+    flex: 1,
+    lineHeight: 16,
+  },
+  cepSuccessText: {
+    color: Colors.success,
+    fontWeight: '600',
+  },
+  cepErrorText: {
+    color: Colors.danger,
+    fontWeight: '600',
   },
 });

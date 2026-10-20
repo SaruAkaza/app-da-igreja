@@ -1,12 +1,14 @@
+import { localDay, previousDay } from '../config/runtime.js';
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { db } from '../config/database.js';
+import { calculateCycleMath, closeGroupCycleAndAwardPodium } from '../services/rewards.js';
 
 export const listGroups = (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
     const churchId = req.user?.church_id;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDay();
 
     const groups = db.prepare(`
       SELECT 
@@ -34,7 +36,7 @@ export const myGroups = (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
     const churchId = req.user?.church_id;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDay();
 
     const groups = db.prepare(`
       SELECT 
@@ -62,7 +64,7 @@ export const getGroupDetails = (req: Request, res: Response) => {
     const { id } = req.params;
     const userId = req.user?.id;
     const churchId = req.user?.church_id;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDay();
 
     const group = db.prepare(`
       SELECT 
@@ -133,7 +135,8 @@ export const joinGroup = (req: Request, res: Response) => {
     }
 
     // Se o usuário ainda não tiver igreja vinculada, vincula à igreja deste grupo
-    if (!churchId || churchId !== targetGroup.church_id) {
+    if (churchId && churchId !== targetGroup.church_id) return res.status(403).json({ error: 'Este grupo pertence a outra igreja.' });
+    if (!churchId) {
       db.prepare('UPDATE users SET church_id = ? WHERE id = ?').run(targetGroup.church_id, userId);
       churchId = targetGroup.church_id;
     }
@@ -181,17 +184,25 @@ export const leaveGroup = (req: Request, res: Response) => {
 export const createGroup = (req: Request, res: Response) => {
   try {
     const churchId = req.user?.church_id;
-    const { title, description, category, book_or_theme, cover_image, invite_code, leaderId } = req.body;
+    const { title, description, category, book_or_theme, cover_image, invite_code, leaderId, cycle_start_date, cycle_end_date, cycleStartDate, cycleEndDate } = req.body;
 
     if (!title || !category || !book_or_theme) {
       return res.status(400).json({ error: 'Título, categoria (biblia/livro) e tema são obrigatórios.' });
     }
 
+    if (!['biblia', 'livro'].includes(category)) return res.status(400).json({ error: 'Categoria inválida.' });
+    if (!churchId) return res.status(400).json({ error: 'Vincule-se a uma igreja primeiro.' });
+    const selectedLeader = leaderId || req.user?.id;
+    const leaderUser = db.prepare("SELECT id FROM users WHERE id = ? AND church_id = ? AND role IN ('leader','church_admin')").get(selectedLeader, churchId);
+    if (!leaderUser || (req.user?.role === 'leader' && selectedLeader !== req.user.id)) return res.status(403).json({ error: 'Escolha um líder autorizado desta igreja.' });
     const cleanCode = (invite_code || title.substring(0, 4) + Math.floor(1000 + Math.random() * 9000)).toUpperCase().replace(/\s+/g, '');
     const existing = db.prepare('SELECT id FROM groups WHERE invite_code = ?').get(cleanCode);
     if (existing) {
       return res.status(409).json({ error: 'Já existe um grupo com este código de convite.' });
     }
+
+    const startVal = cycle_start_date || cycleStartDate || null;
+    const endVal = cycle_end_date || cycleEndDate || null;
 
     const groupId = `grp-${crypto.randomUUID()}`;
     const now = new Date().toISOString();
@@ -199,9 +210,9 @@ export const createGroup = (req: Request, res: Response) => {
     const leader = leaderId || req.user?.id;
 
     db.prepare(`
-      INSERT INTO groups (id, church_id, leader_id, title, description, category, book_or_theme, cover_image, invite_code, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(groupId, churchId, leader, title.trim(), description || '', category, book_or_theme.trim(), cover, cleanCode, now);
+      INSERT INTO groups (id, church_id, leader_id, title, description, category, book_or_theme, cover_image, invite_code, cycle_start_date, cycle_end_date, cycle_status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+    `).run(groupId, churchId, leader, title.trim(), description || '', category, book_or_theme.trim(), cover, cleanCode, startVal, endVal, now);
 
     // O criador/líder entra automaticamente no grupo
     if (req.user?.id) {
@@ -223,10 +234,305 @@ export const createGroup = (req: Request, res: Response) => {
         book_or_theme,
         cover_image: cover,
         invite_code: cleanCode,
+        cycle_start_date: startVal,
+        cycle_end_date: endVal,
+        cycle_status: 'active',
       },
     });
   } catch (err: any) {
     console.error('Erro ao criar grupo:', err);
     return res.status(500).json({ error: 'Erro ao criar grupo.' });
+  }
+};
+
+export const updateGroup = (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const churchId = req.user?.church_id;
+    const userRole = req.user?.role;
+    const userId = req.user?.id;
+
+    const group = db.prepare('SELECT * FROM groups WHERE id = ? AND church_id = ?').get(id, churchId) as any;
+    if (!group) return res.status(404).json({ error: 'Grupo não encontrado.' });
+
+    const isLeader = group.leader_id === userId;
+    const isAdmin = ['church_admin', 'super_admin'].includes(userRole || '');
+    if (!isLeader && !isAdmin) {
+      return res.status(403).json({ error: 'Você não tem permissão para editar este grupo.' });
+    }
+
+    const { title, description, category, book_or_theme, cover_image, leader_id, cycle_start_date, cycle_end_date, cycleStartDate, cycleEndDate, cycle_status, cycleStatus } = req.body;
+
+    if (!title || !category || !book_or_theme) {
+      return res.status(400).json({ error: 'Título, categoria e livro/tema são obrigatórios.' });
+    }
+    if (!['biblia', 'livro'].includes(category)) {
+      return res.status(400).json({ error: 'Categoria inválida. Escolha biblia ou livro.' });
+    }
+
+    let newLeaderId = group.leader_id;
+    if (isAdmin && leader_id !== undefined) {
+      if (leader_id) {
+        const leaderUser = db.prepare("SELECT id FROM users WHERE id = ? AND church_id = ? AND role IN ('leader', 'church_admin')").get(leader_id, churchId);
+        if (!leaderUser) return res.status(400).json({ error: 'Líder inválido ou não autorizado nesta igreja.' });
+        newLeaderId = leader_id;
+      } else {
+        newLeaderId = null;
+      }
+    }
+
+    const newStart = cycle_start_date !== undefined ? cycle_start_date : (cycleStartDate !== undefined ? cycleStartDate : group.cycle_start_date);
+    const newEnd = cycle_end_date !== undefined ? cycle_end_date : (cycleEndDate !== undefined ? cycleEndDate : group.cycle_end_date);
+    const newStatus = cycle_status !== undefined ? cycle_status : (cycleStatus !== undefined ? cycleStatus : group.cycle_status);
+
+    db.prepare(`
+      UPDATE groups SET
+        title = ?,
+        description = ?,
+        category = ?,
+        book_or_theme = ?,
+        cover_image = ?,
+        leader_id = ?,
+        cycle_start_date = ?,
+        cycle_end_date = ?,
+        cycle_status = ?
+      WHERE id = ? AND church_id = ?
+    `).run(
+      title.trim(),
+      description !== undefined ? description : group.description,
+      category,
+      book_or_theme.trim(),
+      cover_image || group.cover_image,
+      newLeaderId,
+      newStart,
+      newEnd,
+      newStatus,
+      id,
+      churchId
+    );
+
+    // Se houver novo líder, garantir que ele esteja inscrito no grupo
+    if (newLeaderId) {
+      const isMember = db.prepare('SELECT id FROM group_members WHERE group_id = ? AND user_id = ?').get(id, newLeaderId);
+      if (!isMember) {
+        db.prepare('INSERT INTO group_members (id, group_id, user_id, joined_at) VALUES (?, ?, ?, ?)').run(`gm-${crypto.randomUUID()}`, id, newLeaderId, new Date().toISOString());
+      }
+    }
+
+    const updated = db.prepare('SELECT * FROM groups WHERE id = ?').get(id);
+    return res.json({
+      message: 'Grupo atualizado com sucesso!',
+      group: updated,
+    });
+  } catch (err: any) {
+    console.error('Erro ao atualizar grupo:', err);
+    return res.status(500).json({ error: 'Erro ao atualizar grupo.' });
+  }
+};
+
+export const deleteGroup = (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const churchId = req.user?.church_id;
+    const userRole = req.user?.role;
+
+    if (!['church_admin', 'super_admin'].includes(userRole || '')) {
+      return res.status(403).json({ error: 'Apenas administradores podem excluir grupos.' });
+    }
+
+    const group = db.prepare('SELECT * FROM groups WHERE id = ? AND church_id = ?').get(id, churchId) as any;
+    if (!group) return res.status(404).json({ error: 'Grupo não encontrado.' });
+
+    db.transaction(() => {
+      // Limpar reações e feedbacks dos devocionais deste grupo
+      db.prepare('DELETE FROM reactions WHERE devotional_id IN (SELECT id FROM devotionals WHERE group_id = ?)').run(id);
+      db.prepare('DELETE FROM leader_feedbacks WHERE group_id = ?').run(id);
+      db.prepare('DELETE FROM devotionals WHERE group_id = ?').run(id);
+      db.prepare('DELETE FROM group_members WHERE group_id = ?').run(id);
+      db.prepare('DELETE FROM groups WHERE id = ? AND church_id = ?').run(id, churchId);
+    })();
+
+    return res.json({ message: `O grupo "${group.title}" foi excluído com sucesso.` });
+  } catch (err: any) {
+    console.error('Erro ao excluir grupo:', err);
+    return res.status(500).json({ error: 'Erro ao excluir grupo.' });
+  }
+};
+
+export const listGroupMembers = (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const churchId = req.user?.church_id;
+
+    const group = db.prepare('SELECT * FROM groups WHERE id = ? AND church_id = ?').get(id, churchId) as any;
+    if (!group) return res.status(404).json({ error: 'Grupo não encontrado.' });
+
+    const members = db.prepare(`
+      SELECT 
+        u.id,
+        u.name,
+        u.email,
+        u.role,
+        u.avatar_url,
+        u.current_streak,
+        u.total_points,
+        gm.joined_at,
+        (u.id = ?) AS is_leader
+      FROM group_members gm
+      INNER JOIN users u ON u.id = gm.user_id
+      WHERE gm.group_id = ?
+      ORDER BY is_leader DESC, u.name ASC
+    `).all(group.leader_id, id);
+
+    return res.json({
+      group: {
+        id: group.id,
+        title: group.title,
+        leader_id: group.leader_id,
+        invite_code: group.invite_code,
+      },
+      members,
+    });
+  } catch (err: any) {
+    console.error('Erro ao listar membros do grupo:', err);
+    return res.status(500).json({ error: 'Erro ao listar membros do grupo.' });
+  }
+};
+
+export const addGroupMember = (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { userId } = req.body;
+    const churchId = req.user?.church_id;
+    const userRole = req.user?.role;
+
+    if (!['leader', 'church_admin', 'super_admin'].includes(userRole || '')) {
+      return res.status(403).json({ error: 'Permissão negada.' });
+    }
+
+    if (!userId) return res.status(400).json({ error: 'ID do membro é obrigatório.' });
+
+    const group = db.prepare('SELECT * FROM groups WHERE id = ? AND church_id = ?').get(id, churchId) as any;
+    if (!group) return res.status(404).json({ error: 'Grupo não encontrado.' });
+
+    const targetUser = db.prepare('SELECT id, name FROM users WHERE id = ? AND church_id = ?').get(userId, churchId) as any;
+    if (!targetUser) return res.status(404).json({ error: 'Membro não encontrado nesta congregação.' });
+
+    const existing = db.prepare('SELECT id FROM group_members WHERE group_id = ? AND user_id = ?').get(id, userId);
+    if (existing) return res.status(409).json({ error: 'Este membro já participa deste grupo.' });
+
+    db.prepare('INSERT INTO group_members (id, group_id, user_id, joined_at) VALUES (?, ?, ?, ?)').run(
+      `gm-${crypto.randomUUID()}`,
+      id,
+      userId,
+      new Date().toISOString()
+    );
+
+    return res.status(201).json({ message: `${targetUser.name} foi adicionado(a) ao grupo.` });
+  } catch (err: any) {
+    console.error('Erro ao adicionar membro ao grupo:', err);
+    return res.status(500).json({ error: 'Erro ao adicionar membro ao grupo.' });
+  }
+};
+
+export const removeGroupMember = (req: Request, res: Response) => {
+  try {
+    const { id, userId } = req.params;
+    const churchId = req.user?.church_id;
+    const userRole = req.user?.role;
+
+    if (!['leader', 'church_admin', 'super_admin'].includes(userRole || '')) {
+      return res.status(403).json({ error: 'Permissão negada.' });
+    }
+
+    const group = db.prepare('SELECT * FROM groups WHERE id = ? AND church_id = ?').get(id, churchId) as any;
+    if (!group) return res.status(404).json({ error: 'Grupo não encontrado.' });
+
+    if (group.leader_id === userId) {
+      return res.status(400).json({ error: 'Não é possível remover o líder do grupo. Troque a liderança antes de remover.' });
+    }
+
+    const result = db.prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?').run(id, userId);
+    if (result.changes === 0) return res.status(404).json({ error: 'Membro não participa deste grupo.' });
+
+    return res.json({ message: 'Membro removido do grupo com sucesso.' });
+  } catch (err: any) {
+    console.error('Erro ao remover membro do grupo:', err);
+    return res.status(500).json({ error: 'Erro ao remover membro do grupo.' });
+  }
+};
+
+export const getGroupCycleDetails = (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const churchId = req.user?.church_id;
+    const group = db.prepare('SELECT * FROM groups WHERE id = ? AND church_id = ?').get(id, churchId) as any;
+    if (!group) return res.status(404).json({ error: 'Grupo não encontrado.' });
+
+    const cycleMath = calculateCycleMath(group.cycle_start_date, group.cycle_end_date);
+
+    // Top 3 membros do grupo em pontuação (Pódio)
+    const podiumMembers = db.prepare(`
+      SELECT u.id, u.name, u.avatar_url, u.total_points, gm.joined_at
+      FROM group_members gm
+      JOIN users u ON u.id = gm.user_id
+      WHERE gm.group_id = ?
+      ORDER BY u.total_points DESC, gm.joined_at ASC
+      LIMIT 3
+    `).all(id) as any[];
+
+    // Prêmios vinculados a este grupo (por pontos e por pódio)
+    const groupRewards = db.prepare(`
+      SELECT r.*,
+        EXISTS(SELECT 1 FROM user_coupons uc WHERE uc.reward_id = r.id AND uc.user_id = ?) AS already_claimed
+      FROM rewards r
+      WHERE r.group_id = ? AND r.church_id = ?
+      ORDER BY r.reward_type ASC, r.podium_position ASC, r.points_required ASC
+    `).all(req.user?.id, id, churchId);
+
+    return res.json({
+      group: {
+        id: group.id,
+        title: group.title,
+        description: group.description,
+        cycle_start_date: group.cycle_start_date,
+        cycle_end_date: group.cycle_end_date,
+        cycle_status: group.cycle_status || 'active',
+        cycle_closed_at: group.cycle_closed_at,
+      },
+      cycleMath,
+      podiumMembers: podiumMembers.map((m, idx) => ({ position: idx + 1, ...m })),
+      groupRewards,
+    });
+  } catch (err: any) {
+    console.error('Erro em getGroupCycleDetails:', err);
+    return res.status(500).json({ error: 'Erro ao buscar dados do ciclo do grupo.' });
+  }
+};
+
+export const closeGroupCycleEndpoint = (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const churchId = req.user?.church_id;
+    const userRole = req.user?.role;
+    const userId = req.user?.id;
+
+    const group = db.prepare('SELECT * FROM groups WHERE id = ? AND church_id = ?').get(id, churchId) as any;
+    if (!group) return res.status(404).json({ error: 'Grupo não encontrado.' });
+
+    const isLeader = group.leader_id === userId;
+    const isAdmin = ['church_admin', 'super_admin'].includes(userRole || '');
+    if (!isLeader && !isAdmin) {
+      return res.status(403).json({ error: 'Apenas o líder do grupo ou administradores podem encerrar o ciclo.' });
+    }
+
+    const result = closeGroupCycleAndAwardPodium(id, churchId!, userId);
+    return res.json({
+      message: 'Ciclo encerrado com sucesso e prêmios do pódio concedidos aos vencedores!',
+      result,
+    });
+  } catch (err: any) {
+    console.error('Erro ao encerrar ciclo do grupo:', err);
+    return res.status(500).json({ error: err.message || 'Erro ao encerrar ciclo do grupo.' });
   }
 };

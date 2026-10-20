@@ -1,8 +1,8 @@
 export const Colors = {
-  primary: '#1e40af', // Azul nobre igreja
-  primaryLight: '#3b82f6',
-  primaryDark: '#1e3a8a',
-  primarySurface: '#eff6ff',
+  primary: '#235c45', // Azul nobre igreja
+  primaryLight: '#638557',
+  primaryDark: '#153f30',
+  primarySurface: '#edf3e7',
 
   accent: '#d97706', // Dourado fé / perseverança
   accentLight: '#f59e0b',
@@ -11,23 +11,23 @@ export const Colors = {
   fire: '#ea580c', // Fogo do hábito / streak
   fireLight: '#ffedd5',
 
-  success: '#16a34a',
+  success: '#316c44',
   successSurface: '#f0fdf4',
 
   danger: '#dc2626',
   dangerSurface: '#fef2f2',
 
-  background: '#f8fafc',
+  background: '#f5f6f2',
   surface: '#ffffff',
   surfaceAlt: '#f1f5f9',
   surfaceSecondary: '#f1f5f9',
 
-  textPrimary: '#0f172a',
-  textSecondary: '#475569',
-  textMuted: '#94a3b8',
+  textPrimary: '#233c34',
+  textSecondary: '#526558',
+  textMuted: '#6b7c70',
   textInverted: '#ffffff',
 
-  border: '#e2e8f0',
+  border: '#e2e7df',
   borderStrong: '#cbd5e1',
 
   warning: '#d97706',
@@ -35,7 +35,7 @@ export const Colors = {
 
   tierBronze: '#b45309',
   tierBronzeBg: '#fef3c7',
-  tierSilver: '#475569',
+  tierSilver: '#526558',
   tierSilverBg: '#f1f5f9',
   tierGold: '#ca8a04',
   tierGoldBg: '#fef9c3',

@@ -1,23 +1,25 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { Alert } from '../services/alerts';
+import { useFocusEffect } from 'expo-router';
+import React,{ useCallback,useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  TextInput,
-  Alert,
-  TouchableOpacity,
-  Image,
-  RefreshControl,
-  Modal,
+
+Image,
+Modal,
+RefreshControl,
+SafeAreaView,
+ScrollView,
+StyleSheet,
+Text,
+TextInput,
+TouchableOpacity,
+View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import { Colors, Spacing, Typography } from '../theme/colors';
 import { AccessibleButton } from '../components/AccessibleButton';
-import { api, formatImageUrl } from '../services/api';
-import { useAuth } from '../context/AuthContext';
+import { PrivateImage } from '../components/PrivateImage';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { useAuth } from '../context/AuthContext';
+import { api } from '../services/api';
+import { Colors,Spacing,Typography } from '../theme/colors';
 
 export const LeaderScannerScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
   const { user } = useAuth();
@@ -205,20 +207,19 @@ export const LeaderScannerScreen: React.FC<{ navigation?: any }> = ({ navigation
                     <Text style={styles.passageText}>📖 {dev.passage_or_chapter}</Text>
                   </View>
 
-                  <Image
-                    source={{ uri: formatImageUrl(dev.image_url) }}
+                  <PrivateImage path={dev.image_url}
                     style={styles.previewSheet}
                     resizeMode="cover"
                   />
 
                   {dev.notes ? (
-                    <Text style={styles.memberNotes}>"{dev.notes}"</Text>
+                    <Text style={styles.memberNotes}>&quot;{dev.notes}&quot;</Text>
                   ) : null}
 
                   {dev.existing_feedback ? (
                     <View style={styles.feedbackGivenBox}>
                       <Text style={styles.feedbackGivenTitle}>✅ Orientação enviada por você:</Text>
-                      <Text style={styles.feedbackGivenText}>"{dev.existing_feedback}"</Text>
+                      <Text style={styles.feedbackGivenText}>&quot;{dev.existing_feedback}&quot;</Text>
                     </View>
                   ) : (
                     <AccessibleButton

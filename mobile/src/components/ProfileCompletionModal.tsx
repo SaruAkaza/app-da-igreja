@@ -1,19 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import { Alert } from '../services/alerts';
+import React,{ useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  StyleSheet,
+  ActivityIndicator,
   Modal,
   ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
   TouchableOpacity,
-  Alert,
-  Image,
+  View
 } from 'react-native';
-import { Colors, Spacing, Typography } from '../theme/colors';
-import { AccessibleButton } from './AccessibleButton';
-import { api } from '../services/api';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../services/api';
+import { cleanCep, formatCep, searchCep } from '../services/cep';
+import { Colors,Spacing,Typography } from '../theme/colors';
+import { AccessibleButton } from './AccessibleButton';
 
 interface ProfileCompletionModalProps {
   visible: boolean;
@@ -21,36 +23,67 @@ interface ProfileCompletionModalProps {
 }
 
 export const ProfileCompletionModal: React.FC<ProfileCompletionModalProps> = ({ visible, onClose }) => {
+  const { user } = useAuth();
+  return visible ? <ProfileForm key={user?.id} visible={visible} onClose={onClose} /> : null;
+};
+const ProfileForm: React.FC<ProfileCompletionModalProps> = ({ visible, onClose }) => {
   const { user, refreshProfile } = useAuth();
 
-  const [lastName, setLastName] = useState('');
-  const [usernameHandle, setUsernameHandle] = useState('');
-  const [age, setAge] = useState('');
-  const [addressStreet, setAddressStreet] = useState('');
-  const [addressNeighborhood, setAddressNeighborhood] = useState('');
-  const [addressCity, setAddressCity] = useState('');
-  const [addressState, setAddressState] = useState('');
-  const [addressZipcode, setAddressZipcode] = useState('');
-  const [avatarUrl, setAvatarUrl] = useState('');
+  const [lastName, setLastName] = useState(user?.last_name || '');
+  const [usernameHandle, setUsernameHandle] = useState(user?.username_handle || '');
+  const [age, setAge] = useState(user?.age ? String(user.age) : '');
+  const [addressStreet, setAddressStreet] = useState(user?.address_street || '');
+  const [addressNeighborhood, setAddressNeighborhood] = useState(user?.address_neighborhood || '');
+  const [addressCity, setAddressCity] = useState(user?.address_city || '');
+  const [addressState, setAddressState] = useState(user?.address_state || '');
+  const [addressZipcode, setAddressZipcode] = useState(user?.address_zipcode || '');
+  const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || '');
   const [loading, setLoading] = useState(false);
+  const [cepSearching, setCepSearching] = useState(false);
+  const [cepStatus, setCepStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [lastSearchedCep, setLastSearchedCep] = useState('');
 
-  useEffect(() => {
-    if (user) {
-      setLastName(user.last_name || '');
-      setUsernameHandle(user.username_handle || '');
-      setAge(user.age ? String(user.age) : '');
-      setAddressStreet(user.address_street || '');
-      setAddressNeighborhood(user.address_neighborhood || '');
-      setAddressCity(user.address_city || 'São Paulo');
-      setAddressState(user.address_state || 'SP');
-      setAddressZipcode(user.address_zipcode || '');
-      setAvatarUrl(user.avatar_url || '');
+  const handleZipcodeChange = (text: string) => {
+    const formatted = formatCep(text);
+    setAddressZipcode(formatted);
+    const digits = cleanCep(text);
+    if (digits.length === 8 && digits !== lastSearchedCep) {
+      void handleSearchCep(digits);
     }
-  }, [user]);
+  };
+
+  const handleSearchCep = async (cepToSearch: string) => {
+    const digits = cleanCep(cepToSearch);
+    if (digits.length !== 8) {
+      setCepStatus({ type: 'error', message: 'Digite o CEP com 8 números.' });
+      return;
+    }
+    setCepSearching(true);
+    setCepStatus(null);
+    setLastSearchedCep(digits);
+    try {
+      const res = await searchCep(digits);
+      if (res.street) setAddressStreet(res.street);
+      if (res.neighborhood) setAddressNeighborhood(res.neighborhood);
+      if (res.city) setAddressCity(res.city);
+      if (res.state) setAddressState(res.state);
+      setAddressZipcode(res.cep);
+      setCepStatus({
+        type: 'success',
+        message: `Endereço localizado via Correios: ${res.street ? res.street + ', ' : ''}${res.neighborhood || ''} - ${res.city}/${res.state}`,
+      });
+    } catch (err: any) {
+      setCepStatus({
+        type: 'error',
+        message: err.message || 'CEP não encontrado. Preencha manualmente.',
+      });
+    } finally {
+      setCepSearching(false);
+    }
+  };
 
   const percent = user?.profile_completion_percent || 0;
   const missing = user?.missing_profile_fields || [];
-  const bonusAwarded = user?.profile_bonus_awarded;
 
   const handleSave = async () => {
     setLoading(true);
@@ -160,10 +193,58 @@ export const ProfileCompletionModal: React.FC<ProfileCompletionModalProps> = ({ 
               onChangeText={setAvatarUrl}
             />
 
+            <View style={styles.sectionHeader}>
+              <Text style={styles.formSectionTitle}>ENDEREÇO RESIDENCIAL:</Text>
+              <Text style={styles.sectionSubtitle}>Digite o CEP para buscar o endereço automaticamente via Correios</Text>
+            </View>
+
+            <View style={styles.cepRow}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={styles.label}>CEP (CORREIOS)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="01001-000"
+                  keyboardType="numeric"
+                  maxLength={9}
+                  value={addressZipcode}
+                  onChangeText={handleZipcodeChange}
+                />
+              </View>
+              <TouchableOpacity
+                style={[styles.cepSearchBtn, cepSearching && styles.cepSearchBtnDisabled]}
+                onPress={() => void handleSearchCep(addressZipcode)}
+                disabled={cepSearching}
+                accessibilityRole="button"
+                accessibilityLabel="Buscar endereço pelo CEP nos Correios"
+              >
+                {cepSearching ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="search-outline" size={16} color="#fff" />
+                    <Text style={styles.cepSearchBtnText}>Buscar CEP</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {cepStatus ? (
+              <View style={[styles.cepStatusBox, cepStatus.type === 'success' ? styles.cepSuccess : styles.cepError]}>
+                <Ionicons
+                  name={cepStatus.type === 'success' ? 'checkmark-circle-outline' : 'alert-circle-outline'}
+                  size={16}
+                  color={cepStatus.type === 'success' ? Colors.success : Colors.danger}
+                />
+                <Text style={[styles.cepStatusText, cepStatus.type === 'success' ? styles.cepSuccessText : styles.cepErrorText]}>
+                  {cepStatus.message}
+                </Text>
+              </View>
+            ) : null}
+
             <Text style={styles.label}>RUA E NÚMERO</Text>
             <TextInput
               style={styles.input}
-              placeholder="Rua das Oliveiras, 100"
+              placeholder="Ex: Praça da Sé, 100"
               value={addressStreet}
               onChangeText={setAddressStreet}
             />
@@ -173,35 +254,22 @@ export const ProfileCompletionModal: React.FC<ProfileCompletionModalProps> = ({ 
                 <Text style={styles.label}>BAIRRO</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="Jardim da Fé"
+                  placeholder="Ex: Sé"
                   value={addressNeighborhood}
                   onChangeText={setAddressNeighborhood}
                 />
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.label}>CEP</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="01000-000"
-                  keyboardType="numeric"
-                  value={addressZipcode}
-                  onChangeText={setAddressZipcode}
-                />
-              </View>
-            </View>
-
-            <View style={styles.row}>
               <View style={{ flex: 2, marginRight: 8 }}>
                 <Text style={styles.label}>CIDADE</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="São Paulo"
+                  placeholder="Ex: São Paulo"
                   value={addressCity}
                   onChangeText={setAddressCity}
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.label}>ESTADO</Text>
+                <Text style={styles.label}>UF</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="SP"
@@ -327,7 +395,66 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     letterSpacing: 0.8,
     marginTop: 10,
+    marginBottom: 2,
+  },
+  sectionHeader: {
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    fontSize: 11,
+    color: Colors.textSecondary,
     marginBottom: 6,
+  },
+  cepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginBottom: 4,
+  },
+  cepSearchBtn: {
+    backgroundColor: Colors.primary,
+    height: 44,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  cepSearchBtnDisabled: {
+    opacity: 0.6,
+  },
+  cepSearchBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  cepStatusBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderRadius: 8,
+    marginVertical: 4,
+    gap: 6,
+  },
+  cepSuccess: {
+    backgroundColor: Colors.accentSurface,
+  },
+  cepError: {
+    backgroundColor: '#fde8e8',
+  },
+  cepStatusText: {
+    fontSize: 11,
+    flex: 1,
+    lineHeight: 16,
+  },
+  cepSuccessText: {
+    color: Colors.success,
+    fontWeight: '600',
+  },
+  cepErrorText: {
+    color: Colors.danger,
+    fontWeight: '600',
   },
   row: {
     flexDirection: 'row',

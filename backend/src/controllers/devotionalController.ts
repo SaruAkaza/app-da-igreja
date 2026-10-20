@@ -1,3 +1,9 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { uploadsDir } from '../config/runtime.js';
+import { imageExtension } from '../middleware/upload.js';
+import { issueCoupons } from '../services/rewards.js';
+import { localDay, previousDay } from '../config/runtime.js';
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import QRCode from 'qrcode';
@@ -13,31 +19,18 @@ export const createDevotional = async (req: Request, res: Response) => {
     }
 
     const { groupId, passageOrChapter, notes } = req.body;
-    let imageUrl = '';
-
-    if (req.file) {
-      imageUrl = `/uploads/devotionals/${req.file.filename}`;
-    } else if (req.body.imageUrl) {
-      imageUrl = req.body.imageUrl;
-    } else {
-      return res.status(400).json({ error: 'É obrigatório anexar a foto da sua folha de devocional manuscrita.' });
-    }
-
-    if (!groupId) {
-      return res.status(400).json({ error: 'Identificador do grupo é obrigatório.' });
-    }
-
-    // Auto ingressar se ainda não for membro
+    if (!req.file) return res.status(400).json({ error: 'Anexe a foto da sua anotação.' });
+    const extension = imageExtension(req.file.buffer);
+    if (!extension) return res.status(400).json({ error: 'O arquivo não contém uma imagem JPEG, PNG ou WebP válida.' });
+    const group = db.prepare('SELECT id FROM groups WHERE id = ? AND church_id = ?').get(groupId || '', churchId);
+    if (!group) return res.status(404).json({ error: 'Grupo não encontrado nesta igreja.' });
     const membership = db.prepare('SELECT id FROM group_members WHERE group_id = ? AND user_id = ?').get(groupId, userId);
-    if (!membership) {
-      db.prepare(`
-        INSERT INTO group_members (id, group_id, user_id, joined_at)
-        VALUES (?, ?, ?, ?)
-      `).run(`gm-${crypto.randomUUID()}`, groupId, userId, new Date().toISOString());
-    }
-
-    const today = new Date().toISOString().slice(0, 10);
-    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    if (!membership) return res.status(403).json({ error: 'Entre no grupo antes de enviar sua anotação.' });
+    if (typeof passageOrChapter !== 'string' || !passageOrChapter.trim() || passageOrChapter.length > 200 || (notes && (typeof notes !== 'string' || notes.length > 5000))) return res.status(400).json({ error: 'Informe a passagem (até 200 caracteres) e uma reflexão com até 5.000 caracteres.' });
+    const filename = crypto.randomUUID() + extension;
+    const imageUrl = '/uploads/devotionals/' + filename;
+    const today = localDay();
+    const yesterday = previousDay();
 
     // Limite de 1 envio pontuado por grupo por dia
     const alreadyPostedInGroup = db.prepare(`
@@ -46,7 +39,7 @@ export const createDevotional = async (req: Request, res: Response) => {
     `).get(groupId, userId, today);
 
     if (alreadyPostedInGroup) {
-      return res.status(400).json({
+      return res.status(409).json({
         error: 'Você já registrou seu devocional de hoje neste grupo! Descanse na Palavra e volte amanhã.',
       });
     }
@@ -116,9 +109,9 @@ export const createDevotional = async (req: Request, res: Response) => {
         SELECT cp.id, cp.total_points_earned 
         FROM challenge_participants cp
         INNER JOIN inter_church_challenges icc ON icc.id = cp.challenge_id
-        WHERE cp.church_id = ? AND icc.status = 'active'
+        WHERE cp.church_id = ? AND icc.status = 'active' AND icc.start_date <= ? AND icc.end_date >= ?
         LIMIT 1
-      `).get(churchId) as any;
+      `).get(churchId, today, today) as any;
 
       if (activeChallenge) {
         db.prepare(`
@@ -129,42 +122,12 @@ export const createDevotional = async (req: Request, res: Response) => {
       }
     });
 
-    insertTransaction();
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    const photoPath = path.join(uploadsDir, filename);
+    fs.writeFileSync(photoPath, req.file.buffer);
+    try { insertTransaction(); } catch (error) { fs.unlinkSync(photoPath); throw error; }
 
-    // 5. Verificar desbloqueio de cupons no trimestre da igreja
-    const unlockedCoupons: any[] = [];
-    const activeQuarter = db.prepare('SELECT id FROM quarters WHERE church_id = ? AND is_active = 1 LIMIT 1').get(churchId) as any;
-
-    if (activeQuarter) {
-      const eligibleRewards = db.prepare(`
-        SELECT r.* FROM rewards r
-        WHERE r.quarter_id = ? AND r.church_id = ? AND r.points_required <= ?
-        AND NOT EXISTS (
-          SELECT 1 FROM user_coupons uc WHERE uc.reward_id = r.id AND uc.user_id = ?
-        )
-      `).all(activeQuarter.id, churchId, newTotalPoints, userId) as any[];
-
-      for (const reward of eligibleRewards) {
-        const couponId = `cp-${crypto.randomUUID()}`;
-        const tierPrefix = reward.tier.toUpperCase().slice(0, 3);
-        const code = `CUPOM-${tierPrefix}-${Math.floor(100000 + Math.random() * 900000)}`;
-        const qrData = await QRCode.toDataURL(code);
-
-        db.prepare(`
-          INSERT INTO user_coupons (id, church_id, user_id, reward_id, coupon_code, qr_code_data, status, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
-        `).run(couponId, churchId, userId, reward.id, code, qrData, now);
-
-        unlockedCoupons.push({
-          id: couponId,
-          coupon_code: code,
-          qr_code_data: qrData,
-          reward_title: reward.title,
-          tier: reward.tier,
-          partner_name: reward.partner_name,
-        });
-      }
-    }
+    const unlockedCoupons = issueCoupons(userId, churchId);
 
     return res.status(201).json({
       message: 'Devocional registrado! Sua anotação foi entregue ao seu líder para discipulado com total sigilo.',
@@ -207,7 +170,10 @@ export const getFeed = (req: Request, res: Response) => {
     const churchId = req.user?.church_id;
     const userRole = req.user?.role;
     const { groupId, page = 1, limit = 20 } = req.query;
-    const offset = (Number(page) - 1) * Number(limit);
+    const pageNumber = Number(page); const pageSize = Number(limit);
+    if (!Number.isInteger(pageNumber) || pageNumber < 1 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) return res.status(400).json({ error: 'Paginação inválida: página >= 1, limite entre 1 e 100.' });
+    const offset = (pageNumber - 1) * pageSize;
+    if (groupId && !db.prepare('SELECT id FROM group_members WHERE group_id = ? AND user_id = ?').get(groupId, userId) && !['church_admin','super_admin'].includes(userRole || '')) return res.status(403).json({ error: 'Entre neste grupo para acompanhar as publicações.' });
 
     let query = `
       SELECT 
@@ -282,7 +248,7 @@ export const getFeed = (req: Request, res: Response) => {
         reacted_heart: Boolean(post.reacted_heart),
         has_feedback: Boolean(post.leader_feedback),
         // Privacidade estrita: só expõe a folha e anotações para quem tem autorização
-        image_url: hasFullAccess ? post.image_url : null,
+        image_url: hasFullAccess ? (post.image_url.startsWith('/uploads/') ? '/api/devotionals/' + post.id + '/photo' : post.image_url) : null,
         notes: hasFullAccess ? post.notes : null,
         is_private_protected: !hasFullAccess,
         leader_feedback: isAuthor || isGroupLeader || isPastorOrAdmin ? post.leader_feedback : null,
@@ -306,6 +272,8 @@ export const toggleReaction = (req: Request, res: Response) => {
       return res.status(400).json({ error: "Tipo de reação inválido. Use 'amen', 'glory' ou 'heart'." });
     }
 
+    const visible = db.prepare('SELECT d.id FROM devotionals d JOIN group_members gm ON gm.group_id = d.group_id WHERE d.id = ? AND d.church_id = ? AND gm.user_id = ?').get(devotionalId, req.user?.church_id, userId);
+    if (!visible) return res.status(404).json({ error: 'Publicação não encontrada nos seus grupos.' });
     const existing = db.prepare('SELECT id FROM reactions WHERE devotional_id = ? AND user_id = ? AND reaction_type = ?').get(devotionalId, userId, reactionType) as any;
 
     if (existing) {
@@ -358,10 +326,15 @@ export const getLeaderDevotionals = (req: Request, res: Response) => {
       params.push(leaderId);
     }
 
-    query += ` ORDER BY d.created_at DESC LIMIT 50 `;
+    const page = Number(req.query.page || 1);
+    if (!Number.isInteger(page) || page < 1) return res.status(400).json({ error: 'Página inválida.' });
+    if (req.query.status === 'pending') query += ' AND NOT EXISTS (SELECT 1 FROM leader_feedbacks lf WHERE lf.devotional_id = d.id)';
+    if (req.query.status === 'done') query += ' AND EXISTS (SELECT 1 FROM leader_feedbacks lf WHERE lf.devotional_id = d.id)';
+    query += ' ORDER BY d.created_at DESC, d.id DESC LIMIT 20 OFFSET ?';
+    params.push((page - 1) * 20);
 
     const devotionals = db.prepare(query).all(...params);
-    return res.json(devotionals);
+    return res.json((devotionals as any[]).map(d => ({ ...d, image_url: d.image_url.startsWith('/uploads/') ? '/api/devotionals/' + d.id + '/photo' : d.image_url })));
   } catch (err: any) {
     console.error('Erro em getLeaderDevotionals:', err);
     return res.status(500).json({ error: 'Erro ao carregar devocionais para discipulado.' });
@@ -387,6 +360,10 @@ export const submitLeaderFeedback = (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Devocional não encontrado.' });
     }
 
+    const group = db.prepare('SELECT leader_id FROM groups WHERE id = ?').get(devotional.group_id) as any;
+    if (!['church_admin', 'super_admin'].includes(req.user?.role || '') && group.leader_id !== leaderId) return res.status(403).json({ error: 'Somente o líder responsável pode orientar este grupo.' });
+    if (pastoralGuidance.length > 5000) return res.status(400).json({ error: 'A orientação deve ter até 5.000 caracteres.' });
+    if (db.prepare('SELECT id FROM leader_feedbacks WHERE devotional_id = ?').get(devotionalId)) return res.status(409).json({ error: 'Este devocional já recebeu uma orientação.' });
     const feedbackId = `fb-${crypto.randomUUID()}`;
     const now = new Date().toISOString();
 

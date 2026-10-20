@@ -1,18 +1,16 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useFocusEffect } from 'expo-router';
+import React,{ useCallback,useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  RefreshControl,
-  Image,
-  TouchableOpacity,
+RefreshControl,
+SafeAreaView,
+ScrollView,
+StyleSheet,
+Text,
+View
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import { Colors, Spacing, Typography } from '../theme/colors';
-import { api, GroupRanking, ActiveChallenge } from '../services/api';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ActiveChallenge,api,GroupRanking } from '../services/api';
+import { Colors,Spacing,Typography } from '../theme/colors';
 
 export const GroupsRankingScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [groups, setGroups] = useState<GroupRanking[]>([]);
@@ -112,6 +110,14 @@ export const GroupsRankingScreen: React.FC<{ navigation: any }> = ({ navigation 
 
             <Text style={styles.groupTitle}>{group.title}</Text>
             <Text style={styles.leaderText}>Líder Discipulador: {group.leader_name || 'Pastor'}</Text>
+
+            {group.cycle_start_date && group.cycle_end_date ? (
+              <View style={styles.cycleBadge}>
+                <Text style={styles.cycleBadgeText}>
+                  📅 Temporada: {group.cycle_start_date} a {group.cycle_end_date} • {group.cycle_status === 'completed' ? 'Encerrado' : 'Ciclo Ativo'}
+                </Text>
+              </View>
+            ) : null}
 
             <View style={styles.statsGrid}>
               <View style={styles.statBox}>
@@ -295,6 +301,21 @@ const styles = StyleSheet.create({
     fontSize: Typography.bodySmall,
     color: Colors.textSecondary,
     marginBottom: Spacing.sm,
+  },
+  cycleBadge: {
+    backgroundColor: '#f0fdf4',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+    alignSelf: 'flex-start',
+    marginBottom: Spacing.sm,
+  },
+  cycleBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#166534',
   },
   statsGrid: {
     flexDirection: 'row',

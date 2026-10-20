@@ -1,416 +1,48 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  Alert,
-  TouchableOpacity,
-  Modal,
-} from 'react-native';
-import { Colors, Spacing, Typography } from '../theme/colors';
-import { useAuth } from '../context/AuthContext';
+import { Ionicons } from '@expo/vector-icons';
+import { useEffect,useState } from 'react';
+import { KeyboardAvoidingView,Modal,Platform,ScrollView,StyleSheet,Text,TextInput,TouchableOpacity,View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { AccessibleButton } from '../components/AccessibleButton';
-import { api, setApiBaseUrl } from '../services/api';
-import { ForgotPasswordModal } from '../components/ForgotPasswordModal';
-import { ChurchRegisterModal } from '../components/ChurchRegisterModal';
 import { AccountSwitcherModal } from '../components/AccountSwitcherModal';
-
-export const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
-  const { login, loginDemo, savedAccounts } = useAuth();
-  const [emailOrHandle, setEmailOrHandle] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  // Modais auxiliares
-  const [forgotModalVisible, setForgotModalVisible] = useState(false);
-  const [churchModalVisible, setChurchModalVisible] = useState(false);
-  const [accountSwitcherVisible, setAccountSwitcherVisible] = useState(false);
-  const [configModalVisible, setConfigModalVisible] = useState(false);
-  const [customIp, setCustomIp] = useState(api.defaults.baseURL || 'http://localhost:3000');
-
-  const handleLogin = async () => {
-    if (!emailOrHandle || !password) {
-      Alert.alert('Atenção', 'Por favor, informe seu e-mail (ou @handle) e senha.');
-      return;
-    }
-    setLoading(true);
-    try {
-      await login(emailOrHandle.trim(), password);
-    } catch (err: any) {
-      const msg = err.response?.data?.error || 'Não foi possível entrar. Verifique seus dados ou o servidor.';
-      Alert.alert('Erro ao entrar', msg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDemo = async (type: 'maria' | 'joao' | 'lider' | 'admin' | 'raquel' | 'pastor_memorial') => {
-    setLoading(true);
-    try {
-      await loginDemo(type);
-    } catch (err: any) {
-      Alert.alert('Servidor Indisponível', 'Certifique-se de que o backend está rodando.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSaveApiUrl = async () => {
-    await setApiBaseUrl(customIp.trim());
-    setConfigModalVisible(false);
-    Alert.alert('Sucesso', `Endereço da API atualizado para:\n${customIp.trim()}`);
-  };
-
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
-        {/* Cabeçalho Limpo */}
-        <View style={styles.header}>
-          <Text style={styles.crossIcon}>✝️</Text>
-          <Text style={styles.title}>Devocional da Igreja</Text>
-          <Text style={styles.subtitle}>
-            Acesse seu espaço de fé, reflexão na Palavra e comunhão cristã.
-          </Text>
-        </View>
-
-        {/* Card de Login Limpo */}
-        <View style={styles.formCard}>
-          <Text style={styles.inputLabel}>SEU E-MAIL OU @HANDLE</Text>
-          <TextInput
-            value={emailOrHandle}
-            onChangeText={setEmailOrHandle}
-            placeholder="exemplo@igreja.com ou @usuario"
-            autoCapitalize="none"
-            style={styles.input}
-          />
-
-          <View style={styles.passwordRow}>
-            <Text style={styles.inputLabel}>SUA SENHA</Text>
-            <TouchableOpacity onPress={() => setForgotModalVisible(true)}>
-              <Text style={styles.forgotLink}>Esqueci minha senha</Text>
-            </TouchableOpacity>
-          </View>
-          <TextInput
-            value={password}
-            onChangeText={setPassword}
-            placeholder="••••••••"
-            secureTextEntry
-            style={styles.input}
-          />
-
-          <AccessibleButton
-            title="Entrar no Aplicativo"
-            onPress={handleLogin}
-            loading={loading}
-            style={styles.loginBtn}
-          />
-
-          {/* Atalho para Alternar Contas Salvas no Aparelho */}
-          {savedAccounts.length > 0 ? (
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => setAccountSwitcherVisible(true)}
-              style={styles.switchAccountsBar}
-            >
-              <Text style={styles.switchAccountsIcon}>👥</Text>
-              <Text style={styles.switchAccountsText}>
-                Alternar conta familiar salva ({savedAccounts.length})
-              </Text>
-            </TouchableOpacity>
-          ) : null}
-
-          {/* Links de Cadastro */}
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Register')}
-            style={styles.registerLink}
-          >
-            <Text style={styles.registerLinkText}>
-              Ainda não tem conta? <Text style={styles.boldText}>Cadastre-se com bônus de 100 pts</Text>
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => setChurchModalVisible(true)}
-            style={styles.pastorLink}
-          >
-            <Text style={styles.pastorLinkText}>
-              ⛪ É Pastor ou Líder? <Text style={styles.boldText}>Cadastre sua Igreja aqui</Text>
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Demonstração Rápida e Discreta (Homologação) */}
-        <View style={styles.demoSection}>
-          <Text style={styles.demoTitle}>Acesso rápido para demonstração:</Text>
-          <View style={styles.demoRow}>
-            <TouchableOpacity onPress={() => handleDemo('maria')} style={styles.demoChip}>
-              <Text style={styles.demoChipText}>👵 Dona Maria</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => handleDemo('joao')} style={styles.demoChip}>
-              <Text style={styles.demoChipText}>🧑 João Pedro</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => handleDemo('lider')} style={styles.demoChip}>
-              <Text style={styles.demoChipText}>🛡️ Líder Marcos</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={[styles.demoRow, { marginTop: 6 }]}>
-            <TouchableOpacity onPress={() => handleDemo('admin')} style={styles.demoChip}>
-              <Text style={styles.demoChipText}>⛪ Pastor Davi</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => handleDemo('raquel')} style={styles.demoChip}>
-              <Text style={styles.demoChipText}>👩 Raquel (Memorial)</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Configuração de Servidor */}
-        <TouchableOpacity
-          onPress={() => setConfigModalVisible(true)}
-          style={styles.serverConfigLink}
-        >
-          <Text style={styles.serverConfigText}>⚙️ Servidor: {api.defaults.baseURL}</Text>
-        </TouchableOpacity>
-      </ScrollView>
-
-      {/* Modais Integrados */}
-      <ForgotPasswordModal
-        visible={forgotModalVisible}
-        onClose={() => setForgotModalVisible(false)}
-      />
-
-      <ChurchRegisterModal
-        visible={churchModalVisible}
-        onClose={() => setChurchModalVisible(false)}
-      />
-
-      <AccountSwitcherModal
-        visible={accountSwitcherVisible}
-        onClose={() => setAccountSwitcherVisible(false)}
-      />
-
-      {/* Modal de Configuração de IP/Host */}
-      <Modal visible={configModalVisible} animationType="fade" transparent>
-        <View style={styles.configModalOverlay}>
-          <View style={styles.configModalCard}>
-            <Text style={styles.configModalTitle}>Configuração da API</Text>
-            <Text style={styles.configModalDesc}>
-              Informe o endereço do backend para testar no seu celular físico.
-            </Text>
-            <TextInput
-              value={customIp}
-              onChangeText={setCustomIp}
-              placeholder="http://192.168.1.50:3000"
-              autoCapitalize="none"
-              style={styles.input}
-            />
-            <AccessibleButton
-              title="Salvar Endereço"
-              onPress={handleSaveApiUrl}
-              style={{ marginTop: 12 }}
-            />
-            <TouchableOpacity
-              onPress={() => setConfigModalVisible(false)}
-              style={{ marginTop: 10, alignItems: 'center' }}
-            >
-              <Text style={{ color: Colors.textSecondary }}>Cancelar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-    </SafeAreaView>
-  );
-};
-
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  container: {
-    padding: Spacing.md,
-    alignItems: 'center',
-    paddingBottom: Spacing.xl,
-  },
-  header: {
-    alignItems: 'center',
-    marginVertical: Spacing.lg,
-    paddingHorizontal: Spacing.sm,
-  },
-  crossIcon: {
-    fontSize: 48,
-    marginBottom: Spacing.xs,
-  },
-  title: {
-    fontSize: Typography.titleHero,
-    fontWeight: '800',
-    color: Colors.textPrimary,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: Typography.bodyMedium,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginTop: 6,
-    lineHeight: 22,
-    maxWidth: 320,
-  },
-  formCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 24,
-    padding: Spacing.lg,
-    width: '100%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 3,
-  },
-  inputLabel: {
-    fontSize: Typography.labelSmall,
-    fontWeight: '700',
-    color: Colors.textPrimary,
-    marginBottom: 6,
-    marginTop: 10,
-    letterSpacing: 0.5,
-  },
-  passwordRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 6,
-  },
-  forgotLink: {
-    fontSize: Typography.caption,
-    color: Colors.primary,
-    fontWeight: '600',
-  },
-  input: {
-    backgroundColor: Colors.surfaceSecondary,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: Typography.bodyMedium,
-    color: Colors.textPrimary,
-  },
-  loginBtn: {
-    marginTop: 20,
-    marginBottom: 10,
-  },
-  switchAccountsBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.surfaceSecondary,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  switchAccountsIcon: {
-    fontSize: 16,
-    marginRight: 6,
-  },
-  switchAccountsText: {
-    fontSize: Typography.bodySmall,
-    fontWeight: '700',
-    color: Colors.primary,
-  },
-  registerLink: {
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  registerLinkText: {
-    fontSize: Typography.bodySmall,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-  },
-  pastorLink: {
-    alignItems: 'center',
-    paddingVertical: 6,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    marginTop: 8,
-    paddingTop: 10,
-  },
-  pastorLinkText: {
-    fontSize: Typography.caption,
-    color: Colors.textPrimary,
-    textAlign: 'center',
-  },
-  boldText: {
-    fontWeight: '800',
-    color: Colors.primary,
-  },
-  demoSection: {
-    width: '100%',
-    marginTop: Spacing.lg,
-    paddingHorizontal: Spacing.xs,
-  },
-  demoTitle: {
-    fontSize: Typography.caption,
-    fontWeight: '700',
-    color: Colors.textSecondary,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  demoRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  demoChip: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-  },
-  demoChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textPrimary,
-  },
-  serverConfigLink: {
-    marginTop: Spacing.lg,
-    padding: Spacing.sm,
-  },
-  serverConfigText: {
-    fontSize: Typography.caption,
-    color: Colors.textMuted,
-    textAlign: 'center',
-  },
-  configModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: Spacing.md,
-  },
-  configModalCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: Spacing.lg,
-    width: '100%',
-    maxWidth: 380,
-  },
-  configModalTitle: {
-    fontSize: Typography.titleMedium,
-    fontWeight: '800',
-    color: Colors.textPrimary,
-  },
-  configModalDesc: {
-    fontSize: Typography.bodySmall,
-    color: Colors.textSecondary,
-    marginVertical: 8,
-  },
-});
+import { ChurchRegisterModal } from '../components/ChurchRegisterModal';
+import { ForgotPasswordModal } from '../components/ForgotPasswordModal';
+import { useAuth } from '../context/AuthContext';
+import { api,setApiBaseUrl } from '../services/api';
+import { Colors } from '../theme/colors';
+export function LoginScreen({ navigation }: { navigation: any }) {
+  const { login, savedAccounts } = useAuth();
+  const [email, setEmail] = useState(''), [password, setPassword] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false);
+  const [forgot, setForgot] = useState(false), [church, setChurch] = useState(false), [accounts, setAccounts] = useState(false), [config, setConfig] = useState(false), [showPassword, setShowPassword] = useState(false);
+  const [server, setServer] = useState(api.defaults.baseURL || ''), [demo, setDemo] = useState(false);
+  useEffect(() => { api.get('/api/health').then(r => setDemo(Boolean(r.data.demo_mode))).catch(() => {}); }, []);
+  async function enter(identifier = email, secret = password) {
+    if (busy) return;
+    if (!identifier.trim() || !secret) { setError('Preencha seu e-mail e sua senha para continuar.'); return; }
+    setError(''); setBusy(true);
+    try { await login(identifier.trim(), secret); }
+    catch (e: any) { setError(e.response?.data?.error || 'Não foi possível conectar. Confira o servidor e tente novamente.'); }
+    finally { setBusy(false); }
+  }
+  async function saveServer() {
+    setBusy(true); setError('');
+    try { await setApiBaseUrl(server.trim()); const r = await api.get('/api/health'); setDemo(Boolean(r.data.demo_mode)); setConfig(false); }
+    catch (e: any) { setError(e.message?.startsWith('Informe') ? e.message : 'O servidor não respondeu. Confira o endereço e sua conexão.'); }
+    finally { setBusy(false); }
+  }
+  return <SafeAreaView style={s.safe}><KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.container}>
+    <View style={s.brand}><View style={s.mark}><Ionicons name="leaf-outline" size={28} color="#fff" /></View><Text style={s.brandText}>comunhão</Text></View>
+    <Text style={s.eyebrow}>FÉ QUE SE VIVE, JUNTOS.</Text><Text style={s.title}>Um novo dia.{'\n'}Um encontro com a Palavra.</Text><Text style={s.subtitle}>Seu espaço de leitura, reflexão e vida em comunidade.</Text>
+    <View style={s.form}><Text style={s.formTitle}>Que bom ter você aqui.</Text><Text style={s.label}>E-mail ou nome de usuário</Text><TextInput style={s.input} value={email} onChangeText={setEmail} placeholder="seuemail@igreja.com" placeholderTextColor={Colors.textMuted} autoCapitalize="none" autoCorrect={false} autoComplete="username" accessibilityLabel="E-mail ou nome de usuário" returnKeyType="next" />
+    <View style={s.labelRow}><Text style={s.label}>Senha</Text><TouchableOpacity onPress={() => setForgot(true)} style={s.linkButton}><Text style={s.link}>Esqueceu a senha?</Text></TouchableOpacity></View><View style={s.password}><TextInput style={[s.input, { flex: 1, borderWidth: 0, marginBottom: 0 }]} value={password} onChangeText={setPassword} placeholder="Sua senha" placeholderTextColor={Colors.textMuted} secureTextEntry={!showPassword} autoComplete="current-password" accessibilityLabel="Senha" onSubmitEditing={() => void enter()} returnKeyType="go" /><TouchableOpacity onPress={() => setShowPassword(!showPassword)} accessibilityLabel={showPassword ? 'Ocultar senha' : 'Mostrar senha'} accessibilityRole="button" style={s.eye}><Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={21} color={Colors.textSecondary} /></TouchableOpacity></View>
+    {error && !config ? <Text accessibilityRole="alert" style={s.error}>{error}</Text> : null}<AccessibleButton title="Entrar na minha comunidade" loading={busy} onPress={() => void enter()} style={{ marginTop: 12 }} />
+    <TouchableOpacity onPress={() => navigation.navigate('Register')} style={s.register}><Text style={s.registerText}>Primeira vez por aqui? <Text style={s.link}>Criar minha conta</Text></Text></TouchableOpacity>
+    {savedAccounts.length ? <AccessibleButton title="Alternar conta salva" variant="outline" onPress={() => setAccounts(true)} /> : null}
+    </View>
+    <TouchableOpacity onPress={() => setChurch(true)} style={s.churchLink}><Ionicons name="business-outline" size={19} color={Colors.primary} /><Text style={s.link}>Levar o Comunhão para minha igreja</Text></TouchableOpacity>
+    {demo ? <View style={s.demo}><Text style={s.demoLabel}>ACESSO RÁPIDO DO ADMINISTRADOR</Text><View style={s.demoRow}>{[['Admin (Login: admin / Senha: 1234)', 'admin', '1234']].map(([label, value, pwd]) => <TouchableOpacity disabled={busy} key={value} onPress={() => void enter(value, pwd)} style={s.demoChip}><Text style={s.link}>{label}</Text></TouchableOpacity>)}</View></View> : null}
+    <TouchableOpacity onPress={() => { setError(''); setConfig(true); }} style={s.serverLink}><Ionicons name="settings-outline" color={Colors.textSecondary} size={15} /><Text style={s.serverText}>Configurar conexão com o servidor</Text></TouchableOpacity>
+    <ForgotPasswordModal visible={forgot} onClose={() => setForgot(false)} /><ChurchRegisterModal visible={church} onClose={() => setChurch(false)} /><AccountSwitcherModal visible={accounts} onClose={() => setAccounts(false)} />
+    <Modal visible={config} transparent animationType="fade" onRequestClose={() => setConfig(false)}><View style={s.overlay}><View style={s.modal}><Text style={s.formTitle}>Conectar à sua igreja</Text><Text style={s.subtitle}>Informe o endereço da API fornecido pelo administrador.</Text><TextInput style={s.input} value={server} onChangeText={setServer} autoCapitalize="none" autoCorrect={false} placeholder="http://192.168.1.15:3000" accessibilityLabel="Endereço do servidor" />{error ? <Text accessibilityRole="alert" style={s.error}>{error}</Text> : null}<AccessibleButton title="Verificar e salvar conexão" loading={busy} onPress={() => void saveServer()} /><AccessibleButton title="Voltar" variant="secondary" onPress={() => setConfig(false)} /></View></View></Modal>
+  </ScrollView></KeyboardAvoidingView></SafeAreaView>;
+}
+const s=StyleSheet.create({safe:{flex:1,backgroundColor:Colors.background},container:{width:'100%',maxWidth:520,alignSelf:'center',padding:26,paddingTop:40,paddingBottom:28},brand:{flexDirection:'row',gap:12,alignItems:'center',justifyContent:'center'},mark:{backgroundColor:Colors.primary,width:48,height:48,borderRadius:15,alignItems:'center',justifyContent:'center'},brandText:{fontSize:32,fontWeight:'700',letterSpacing:-1.5,color:Colors.primaryDark},eyebrow:{fontSize:9,letterSpacing:2,color:Colors.textSecondary,textAlign:'center',marginTop:14},title:{fontSize:29,lineHeight:39,letterSpacing:-1,fontWeight:'600',textAlign:'center',color:Colors.textPrimary,marginTop:34},subtitle:{fontSize:14,lineHeight:23,textAlign:'center',color:Colors.textSecondary,marginVertical:14},form:{backgroundColor:'#fff',padding:23,borderWidth:1,borderColor:Colors.border,borderRadius:21,marginTop:16},formTitle:{fontSize:20,fontWeight:'700',letterSpacing:-.5,color:Colors.textPrimary,marginBottom:24},label:{fontSize:12,fontWeight:'600',color:Colors.textPrimary,marginBottom:9},input:{minHeight:56,borderWidth:1,borderColor:Colors.borderStrong,borderRadius:11,paddingHorizontal:14,fontSize:16,color:Colors.textPrimary,backgroundColor:'#fff',marginBottom:16},labelRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},password:{flexDirection:'row',borderWidth:1,borderColor:Colors.borderStrong,borderRadius:11,alignItems:'center',marginBottom:8},eye:{width:50,minHeight:56,alignItems:'center',justifyContent:'center'},linkButton:{minHeight:48,justifyContent:'center'},link:{color:Colors.primary,fontSize:12,fontWeight:'700'},register:{minHeight:56,alignItems:'center',justifyContent:'center',marginTop:12},registerText:{fontSize:12,color:Colors.textSecondary,textAlign:'center',lineHeight:22},churchLink:{flexDirection:'row',gap:9,minHeight:56,alignItems:'center',justifyContent:'center',marginTop:20},demo:{marginTop:18,borderTopWidth:1,borderTopColor:Colors.border,paddingTop:20},demoLabel:{fontSize:8,letterSpacing:1.4,color:Colors.textSecondary,textAlign:'center'},demoRow:{flexDirection:'row',justifyContent:'center',gap:10,marginTop:14},demoChip:{minHeight:48,paddingHorizontal:22,justifyContent:'center',backgroundColor:'#eaf1e2',borderRadius:10},serverLink:{flexDirection:'row',gap:7,minHeight:56,alignItems:'center',justifyContent:'center',marginTop:16},serverText:{fontSize:11,color:Colors.textSecondary},error:{paddingVertical:12,fontSize:14,color:Colors.danger,lineHeight:22},overlay:{flex:1,backgroundColor:'#193a2c88',padding:24,alignItems:'center',justifyContent:'center'},modal:{backgroundColor:'#fff',borderRadius:20,padding:25,width:'100%',maxWidth:430}});

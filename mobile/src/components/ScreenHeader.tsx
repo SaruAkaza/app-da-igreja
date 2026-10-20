@@ -1,6 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Colors, Spacing, Typography } from '../theme/colors';
+import { StyleSheet,Text,TouchableOpacity,View } from 'react-native';
+import { Colors,Spacing,Typography } from '../theme/colors';
 
 interface ScreenHeaderProps {
   title: string;

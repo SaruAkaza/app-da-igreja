@@ -1,14 +1,15 @@
 import React from 'react';
 import {
-  TouchableOpacity,
-  Text,
-  StyleSheet,
-  ActivityIndicator,
-  ViewStyle,
-  TextStyle,
-  View,
+ActivityIndicator,
+StyleSheet,
+Text,
+TextStyle,
+TouchableOpacity,
+View,
+ViewStyle,
 } from 'react-native';
-import { Colors, Spacing, Typography } from '../theme/colors';
+import { useAuth } from '../context/AuthContext';
+import { Colors,Spacing,Typography } from '../theme/colors';
 
 interface AccessibleButtonProps {
   title: string;
@@ -33,6 +34,7 @@ export const AccessibleButton: React.FC<AccessibleButtonProps> = ({
   textStyle,
   subtitle,
 }) => {
+  const { isSeniorMode } = useAuth();
   const getBackgroundColor = () => {
     if (disabled) return Colors.borderStrong;
     switch (variant) {
@@ -68,6 +70,7 @@ export const AccessibleButton: React.FC<AccessibleButtonProps> = ({
         isOutline && { borderWidth: 2, borderColor: Colors.primary },
         style,
       ]}
+      accessibilityState={{ disabled: disabled || loading, busy: loading }}
       accessibilityRole="button"
       accessibilityLabel={title}
     >
@@ -77,7 +80,7 @@ export const AccessibleButton: React.FC<AccessibleButtonProps> = ({
         <View style={styles.contentRow}>
           {icon && <View style={styles.iconContainer}>{icon}</View>}
           <View style={styles.textContainer}>
-            <Text style={[styles.text, { color: getTextColor() }, textStyle]}>
+            <Text style={[styles.text, { color: getTextColor(), fontSize: isSeniorMode ? 22 : Typography.buttonText }, textStyle]}>
               {title}
             </Text>
             {subtitle ? (

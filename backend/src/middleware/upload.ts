@@ -1,40 +1,15 @@
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const uploadDir = path.resolve(__dirname, '../../uploads/devotionals');
-
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `folha-${uniqueSuffix}${ext}`);
-  },
-});
-
-const fileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowedMime = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/jpg'];
-  if (allowedMime.includes(file.mimetype) || file.mimetype.startsWith('image/')) {
-    cb(null, true);
-  } else {
-    cb(new Error('Envie apenas arquivos de imagem (JPEG, PNG ou WEBP).'));
-  }
-};
-
 export const upload = multer({
-  storage,
-  limits: {
-    fileSize: 15 * 1024 * 1024, // Limite de 15MB para fotos de câmera de alta resolução
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 5, fieldSize: 12000 },
+  fileFilter: (_req, file, cb) => {
+    if (['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(file.mimetype)) cb(null, true);
+    else cb(Object.assign(new Error('Escolha uma foto JPEG, PNG ou WebP, com até 10 MB.'), { status: 400 }));
   },
-  fileFilter,
 });
+export function imageExtension(buffer: Buffer): string | null {
+  if (buffer.length > 12 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return '.jpg';
+  if (buffer.length > 8 && buffer.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) return '.png';
+  if (buffer.length > 12 && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') return '.webp';
+  return null;
+}

@@ -1,15 +1,16 @@
-import React, { useState } from 'react';
+import React,{ useState } from 'react';
 import {
-  View,
-  Text,
-  Image,
-  StyleSheet,
-  TouchableOpacity,
-  Modal,
-  SafeAreaView,
+Image,
+Modal,
+SafeAreaView,
+StyleSheet,
+Text,
+TouchableOpacity,
+View,
 } from 'react-native';
-import { Colors, Spacing, Typography } from '../theme/colors';
-import { Devotional, formatImageUrl, api } from '../services/api';
+import { api,Devotional } from '../services/api';
+import { Colors,Spacing,Typography } from '../theme/colors';
+import { PrivateImage } from './PrivateImage';
 
 interface DevotionalCardProps {
   devotional: Devotional;
@@ -49,7 +50,6 @@ export const DevotionalCard: React.FC<DevotionalCardProps> = ({
   };
 
   const isProtected = devotional.is_private_protected;
-  const imageFullUrl = formatImageUrl(devotional.image_url || undefined);
 
   return (
     <View style={styles.card}>
@@ -86,7 +86,7 @@ export const DevotionalCard: React.FC<DevotionalCardProps> = ({
           <Text style={styles.protectedIcon}>📖</Text>
           <Text style={styles.protectedTitle}>Devocional Entregue com Fidelidade</Text>
           <Text style={styles.protectedPassage}>
-            Passagem: <strong>{devotional.passage_or_chapter || 'Estudo do Dia'}</strong>
+            Passagem: <Text style={{ fontWeight: '700' }}>{devotional.passage_or_chapter || 'Estudo do Dia'}</Text>
           </Text>
           <View style={styles.protectedBadge}>
             <Text style={styles.protectedBadgeText}>
@@ -103,8 +103,8 @@ export const DevotionalCard: React.FC<DevotionalCardProps> = ({
               onPress={() => setZoomVisible(true)}
               style={styles.imageWrapper}
             >
-              <Image
-                source={{ uri: imageFullUrl }}
+              <PrivateImage
+                path={devotional.image_url || ''}
                 style={styles.devotionalImage}
                 resizeMode="cover"
               />
@@ -124,7 +124,7 @@ export const DevotionalCard: React.FC<DevotionalCardProps> = ({
             ) : null}
 
             {devotional.notes ? (
-              <Text style={styles.notesText}>"{devotional.notes}"</Text>
+              <Text style={styles.notesText}>&quot;{devotional.notes}&quot;</Text>
             ) : null}
 
             {/* Dica do Líder se existir */}
@@ -134,7 +134,7 @@ export const DevotionalCard: React.FC<DevotionalCardProps> = ({
                   <Text style={styles.feedbackIcon}>💌</Text>
                   <Text style={styles.feedbackTitle}>Orientação Pastoral do Líder:</Text>
                 </View>
-                <Text style={styles.feedbackText}>"{devotional.leader_feedback}"</Text>
+                <Text style={styles.feedbackText}>&quot;{devotional.leader_feedback}&quot;</Text>
               </View>
             ) : null}
           </View>
@@ -187,7 +187,7 @@ export const DevotionalCard: React.FC<DevotionalCardProps> = ({
             </TouchableOpacity>
           </View>
           <View style={styles.modalImageContainer}>
-            <Image source={{ uri: imageFullUrl }} style={styles.modalImage} resizeMode="contain" />
+            <PrivateImage path={devotional.image_url || ''} style={styles.modalImage} resizeMode="contain" />
           </View>
         </SafeAreaView>
       </Modal>

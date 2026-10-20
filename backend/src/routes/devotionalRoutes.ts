@@ -1,3 +1,4 @@
+import { privatePhoto } from '../middleware/media.js';
 import { Router } from 'express';
 import {
   createDevotional,
@@ -16,6 +17,7 @@ router.use(authenticateToken);
 
 router.post('/', upload.single('photo'), createDevotional);
 router.get('/feed', getFeed);
+router.get('/:id/photo', privatePhoto);
 router.get('/my-feedbacks', getMyFeedbacks);
 router.post('/:devotionalId/react', toggleReaction);
 

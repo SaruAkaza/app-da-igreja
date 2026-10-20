@@ -1,17 +1,18 @@
-import React, { useState } from 'react';
+import { Alert } from '../services/alerts';
+import React,{ useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  StyleSheet,
-  Modal,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
+
+Modal,
+ScrollView,
+StyleSheet,
+Text,
+TextInput,
+TouchableOpacity,
+View,
 } from 'react-native';
-import { Colors, Spacing, Typography } from '../theme/colors';
-import { AccessibleButton } from './AccessibleButton';
 import { api } from '../services/api';
+import { Colors,Spacing,Typography } from '../theme/colors';
+import { AccessibleButton } from './AccessibleButton';
 
 interface ForgotPasswordModalProps {
   visible: boolean;

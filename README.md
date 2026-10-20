@@ -1,144 +1,106 @@
-# ✝️ App Devocional Gamificado da Igreja
+# Comunhão · App devocional da igreja
 
-Ecossistema comunitário completo para incentivar o hábito diário de leitura bíblica e devocionais entre jovens, adultos e idosos. O sistema conta com **comprovação autêntica via foto da folha manuscrita**, acúmulo de pontos com **bônus de constância (streak 🔥)** e **recompensas trimestrais reais** (livros, camisas, restaurantes parceiros) validadas por QR Code nos cultos.
+Aplicativo Expo/React Native para leitura bíblica em comunidade, registro de anotações por foto, acompanhamento pastoral e recompensas. O backend usa Node.js, Express, TypeScript e SQLite. O painel web é servido pela própria API.
 
----
+## Começar
 
-## 🏗️ Arquitetura do Sistema
+Requer Node.js **22.13 ou mais recente** (validado com Node 24). Abra um terminal na raiz do projeto:
 
-```
-App da Igreja/
-├── backend/                       # API REST Node.js + Express + SQLite + TypeScript
-│   ├── src/
-│   │   ├── config/database.ts     # Schema SQLite com chaves estrangeiras e índices
-│   │   ├── config/seed.ts         # População automática com dados da igreja e demo
-│   │   ├── controllers/           # Auth, Grupos, Devocionais, Gamificação e Admin
-│   │   ├── middleware/            # Proteção JWT e Multer para fotos das folhas
-│   │   ├── routes/                # Endpoints REST
-│   │   ├── test.ts                # Bateria com 10 testes E2E automatizados
-│   │   └── server.ts              # Servidor Express com uploads e painel estático
-│   ├── public/admin/              # Painel Administrativo Web (HTML + Tailwind moderno)
-│   ├── uploads/devotionals/       # Armazenamento local das fotos das folhas
-│   └── package.json
-│
-├── mobile/                        # Aplicativo Mobile (Expo / React Native / TypeScript)
-│   ├── src/
-│   │   ├── components/            # Botões acessíveis (56px+), Cards de Folha, QR Code
-│   │   ├── context/               # AuthContext (sessão e troca rápida de usuários demo)
-│   │   ├── screens/               # Login, Home, Feed do Grupo, Câmera Acessível, Prêmios, Líder
-│   │   ├── services/api.ts        # Cliente Axios com baseURL e interceptores JWT
-│   │   └── theme/                 # Paleta igreja, modo alto contraste e texto grande para idosos
-│   ├── App.tsx                    # Navegação por Abas e Stacks
-│   └── package.json
-│
-└── README.md                      # Guia completo de uso e execução
-```
-
----
-
-## 🎯 Regras de Gamificação e Acessibilidade
-
-1. **Envio da Folha Manuscrita**:
-   - Cada folha de caderno anotada e fotografada concede **+50 pontos** imediatos.
-   - Limite de 1 envio pontuado por grupo a cada dia para preservar a profundidade devocional.
-2. **Bônus de Constância (Streak 🔥)**:
-   - Para cada dia consecutivo de leitura, o membro recebe **+10 pontos extras por dia de sequência**.
-   - Incentiva o membro a não quebrar o hábito diário.
-3. **Níveis de Metas no Trimestre**:
-   - 🥉 **Bronze** (1.500 pts): Desconto de 15% na Livraria da Igreja.
-   - 🥈 **Prata** (2.800 pts): R$ 20,00 de desconto na Camisa da Conferência 2026.
-   - 🥇 **Ouro** (4.000 pts): Almoço no Restaurante Parceiro + Livro do Trimestre.
-4. **Cupons Digitais com QR Code**:
-   - Ao atingir a pontuação necessária, o sistema gera automaticamente um cupom com código exclusivo e imagem de QR Code.
-   - O membro exibe o QR Code no culto e o líder/balconista dá baixa instantânea.
-5. **Acessibilidade para Idosos ("Modo Super Acessível")**:
-   - Todos os botões possuem área de toque generosa (mínimo de 56px de altura).
-   - Tipografia ampliada (17px a 28px) de alta legibilidade.
-   - Tela de confirmação amigável de nitidez: *"Sua anotação ficou nítida e legível?"* com duas opções diretas: *"📸 Tirar Outra"* ou *"✅ Tudo Certo, Enviar!"*.
-
----
-
-## 🚀 Como Executar o Projeto
-
-### Pré-requisitos
-- Node.js instalado (v18+)
-- Celular físico com o aplicativo **Expo Go** instalado (ou emulador Android/iOS, ou no navegador)
-
----
-
-### Passo 1: Iniciar o Backend e Painel Administrativo
-
-Abra um terminal na pasta `backend`:
-
-```bash
-cd backend
+```powershell
+npm run setup
 npm run dev
 ```
 
-O servidor iniciará automaticamente na porta 3000:
-- **API Healthcheck**: `http://localhost:3000/api/health`
-- **Painel Administrativo Web**: `http://localhost:3000/admin`
+O primeiro comando instala as dependências com os arquivos de versões fixadas. O segundo inicia API e Expo. Pressione **w** no terminal do Expo para abrir o aplicativo no navegador.
 
-> O banco de dados SQLite (`data/igreja_devocional.db`) e o seed inicial são criados de forma automática na primeira inicialização!
+- Painel administrativo: http://localhost:3000/admin/
+- Aplicativo Mobile Web unificado: http://localhost:3000/ (ou http://localhost:8081 via Metro)
+- Saúde da API: http://localhost:3000/api/health
+- Celular: Expo Go compatível com SDK 58; use o QR Code do Expo. Em **Configurar conexão com o servidor**, informe `http://IP_DO_COMPUTADOR:3000`. Computador e celular devem estar na mesma rede.
 
----
+### 🌐 Como Compartilhar com Outras Pessoas na Internet para Teste
 
-### Passo 2: Acessar o Painel Administrativo Web
+Você pode compartilhar o app de duas maneiras:
 
-Abra o navegador no computador e acesse:
-```
-http://localhost:3000/admin
-```
-
-Recursos do Painel Web:
-- **Visão Geral**: Métricas de devocionais de hoje, total de folhas, membros ativos e engajamento dos grupos.
-- **Auditoria de Folhas**: Fotos das folhas manuscritas em alta resolução com clique para ampliar e moderação.
-- **Ranking**: Pódio da igreja (1º, 2º, 3º lugar) e ranking geral por pontos e constância.
-- **Membros & Bônus**: Gestão de irmãos com ferramenta para o Pastor conceder pontos de bônus discricionários (+100 pts) por destaque no culto.
-- **Validador de Cupons**: Campo rápido para digitar ou ler o código do cupom e registrar a entrega do prêmio.
-
----
-
-### Passo 3: Iniciar o Aplicativo Mobile (Expo)
-
-Abra outro terminal na pasta `mobile`:
-
+#### 1. Link Público Imediato (Túnel sem custo):
+Com o servidor rodando, abra outro terminal e execute:
 ```bash
-cd mobile
-npm start
+npm run tunnel
 ```
+Isso gerará um link público seguro (ex: `https://sua-igreja.loca.lt`) que você pode enviar no WhatsApp para qualquer pessoa abrir no celular ou computador imediatamente!
 
-Você tem 3 opções para rodar o app:
-
-1. **No seu Celular Físico (Mais recomendado)**:
-   - Abra o aplicativo **Expo Go** no celular.
-   - Escaneie o QR Code exibido no terminal.
-   - *Dica*: No app móvel, clique em `⚙️ Configurar Servidor` na tela de login e digite o IP do seu computador na rede Wi-Fi (ex: `http://192.168.1.15:3000`).
-2. **No Navegador Web do Computador**:
-   - Pressione `w` no terminal do Expo ou rode `npm run web`.
-3. **No Emulador Android**:
-   - Pressione `a` no terminal do Expo.
-
----
-
-## 👥 Contas de Demonstração (1 Toque no App)
-
-Na tela de login do app mobile existem botões de 1 toque para alternar entre os perfis:
-
-| Nome | E-mail | Senha | Perfil no Sistema |
-| :--- | :--- | :--- | :--- |
-| **Dona Maria** | `maria@igreja.com` | `123456` | Idosa exemplar, 30 dias de sequência (🔥 30d), nível Ouro atingido com cupom pronto |
-| **João Pedro** | `joao@igreja.com` | `123456` | Jovem, devocionais em Tiago, nível Bronze atingido |
-| **Líder Marcos** | `lider@igreja.com` | `123456` | Líder com acesso à aba "Líder" para validar e dar baixa em cupons com QR Code |
-| **Pastor Davi** | `admin@igreja.com` | `123456` | Pastor e administrador do painel web |
-
----
-
-## 🧪 Testes Automatizados E2E
-
-Para rodar a bateria completa com os 10 testes ponta a ponta da API (Cadastro, Login, Grupos, Upload de Folha, Pontuação, Streak, Reações, Bônus, Desbloqueio de Cupons e Baixa de QR Code):
-
+#### 2. Build Unificado e Deploy em Nuvem (Render / Railway / VPS):
+Gere o build estático do aplicativo web:
 ```bash
-cd backend
-npm test
+npm run build:web
 ```
+O backend em Node.js servirá tudo em um único endereço:
+* `/` -> Aplicativo Mobile Web (membros e líderes)
+* `/admin` -> Painel Administrativo da Igreja
+* `/api` -> Toda a API REST e banco de dados SQLite Multi-Igrejas
+
+Também é possível iniciar separadamente: `npm run dev` dentro de `backend` e `npm start` dentro de `mobile`.
+
+## Conhecer sem alterar os dados da igreja
+
+Na raiz, execute:
+
+```powershell
+npm run demo
+```
+
+A demonstração usa **outro banco**, na pasta `.demo-data`, e habilita os acessos rápidos. Não use simultaneamente com outra API na mesma porta. O seed só roda quando `DEMO_MODE=true` e o banco está vazio.
+
+| Perfil | E-mail | Senha de demonstração |
+| --- | --- | --- |
+| Membro | maria@igreja.com | 123456 |
+| Membro | joao@igreja.com | 123456 |
+| Líder | lider@igreja.com | 123456 |
+| Administrador | admin@igreja.com | 123456 |
+| Administrador de outra igreja | pastor.silas@memorial.com | 123456 |
+
+Os códigos de confirmação aparecem na tela **somente na demonstração**. Ela contém nomes, fotografias remotas, pontos e prêmios fictícios; suas datas são exemplos de 2026. Em produção, o modo de demonstração é recusado pelo servidor.
+
+## Usar com sua igreja
+
+1. Copie `backend/.env.example` para `backend/.env`. Preencha `JWT_SECRET` com uma chave aleatória de pelo menos 32 caracteres. Guarde essa chave: sua troca encerra as sessões existentes. Sem chave em desenvolvimento, uma chave temporária é criada a cada reinicialização.
+2. Configure `SMTP_URL` e `MAIL_FROM` para confirmação de e-mail e recuperação de senha. Por exemplo, uma URL de conexão SMTP fornecida pelo seu provedor. O aplicativo informa quando o serviço ainda não está configurado.
+3. Cadastre a igreja pelo botão **Levar o Comunhão para minha igreja** na entrada do aplicativo, ou entre com um administrador já existente. O painel exige perfil de administrador; líderes têm seu espaço no aplicativo.
+4. No painel, crie grupos, compartilhe seus códigos e cadastre os prêmios disponíveis. Cada prêmio pertence ao trimestre atual; se não existir uma temporada para ele, o servidor a cria.
+5. Os membros criam a conta em duas etapas, confirmam o e-mail, entram na igreja/grupo e registram sua primeira leitura. Menores também precisam de autorização do responsável.
+
+Para a autorização do responsável, configure `CONSENT_WEBHOOK_URL` e, se necessário, `CONSENT_WEBHOOK_TOKEN`. O servidor faz um POST com `{phone, childName, code, expires_at}` para esse serviço, que deve entregar a mensagem diretamente ao responsável por um provedor de SMS ou WhatsApp. O código não é devolvido ao menor fora da demonstração. Sem o serviço, esse fluxo permanece indisponível e informa o motivo.
+
+## Rotina
+
+- **Membro:** lê, fotografa a anotação, informa a passagem e envia ao grupo. Sua reflexão e foto ficam disponíveis ao autor, líder responsável e administração da mesma igreja. Os demais participantes veem apenas a celebração da leitura e podem reagir.
+- **Líder:** acompanha somente os grupos sob sua liderança, envia orientações e registra a entrega de prêmios pelo código do cupom.
+- **Administrador:** acompanha atividade semanal, orientações pendentes e grupos; busca membros; concede bônus com motivo; cadastra grupos e prêmios; modera devocionais e valida entregas. Pode criar ou participar de jornadas entre igrejas.
+- **Pontos:** 50 por registro, uma vez por grupo/dia; bônus de sequência de `min(dias × 10, 100)` uma vez por dia. O dia segue `America/Sao_Paulo` por padrão. Prêmios usam o saldo acumulado de pontos e geram um cupom por pessoa/prêmio no trimestre; os pontos não são gastos no resgate.
+- **Acessibilidade:** botões principais de pelo menos 56 px e modo de leitura ampliada nas configurações, aplicado à tela inicial e aos botões compartilhados.
+
+## Dados existentes e atualização
+
+O banco padrão continua sendo `backend/data/igreja_devocional.db`. Novos uploads ficam em `backend/data/uploads/devotionals`. Fotos antigas em `backend/uploads/devotionals` continuam acessíveis **pela rota privada autenticada**, sem precisar mover os arquivos. A API não serve mais `/uploads` publicamente. Clientes antigos que utilizavam esse caminho precisam ser atualizados.
+
+As migrações mantêm os registros e acrescentam a versão de sessão. A migração deixou de inventar endereços, idades e verificações para completar perfis. Dados fictícios que já foram gravados por versões anteriores precisam ser revisados pela igreja; a atualização não adivinha quais informações eram reais.
+
+Faça backup consistente do SQLite e das duas pastas de uploads antes de uma atualização operacional. Com o servidor parado, copie o banco e uploads. Não coloque fotos, bancos ou `.env` no Git. Defina `DATA_DIR` para outro caminho absoluto, se necessário. Não mude esse valor sem migrar também os dados.
+
+## Verificar
+
+```powershell
+npm run check
+```
+
+Executa compilação do backend, testes de integração HTTP, checagem de tipos do aplicativo e lint. Os testes criam banco e uploads temporários, iniciam uma API em porta aleatória e removem seus próprios arquivos ao terminar. Eles nunca se conectam ao servidor da porta 3000 nem alteram o banco da igreja.
+
+Para exportar o aplicativo web, execute `npx expo export --platform web` na pasta `mobile`.
+
+## Antes de disponibilizar na internet
+
+Use HTTPS, `NODE_ENV=production`, `JWT_SECRET` persistente, origens web explícitas em `CORS_ORIGINS` e `DEMO_MODE=false`. Não exponha o Metro/Expo de desenvolvimento. Configure entrega de mensagens, backups e contas reais; revise as contas de demonstração caso o banco antigo já as contenha. A API usa limite de tentativas por IP em memória, adequado a uma instância; uma implantação com várias instâncias precisa de controle compartilhado e armazenamento de arquivos apropriado.
+
+A auditoria realizada em 20/10/2026 não encontrou vulnerabilidades nas dependências de produção do backend. A cadeia do Expo apresentou 26 alertas (19 altos e 7 moderados), com causas em `braces`, `node-forge` e `uuid`. As correções compatíveis automáticas foram aplicadas; as restantes não tinham solução compatível indicada pelo auditor. Não foi forçado downgrade do SDK. Reavalie as dependências antes de publicar.
+
+Validação realizada em Windows e navegador. Câmera, permissões nativas, cofre do sistema e builds Android/iOS precisam de validação em aparelho físico antes da distribuição. Configuração de SMTP, provedor do responsável e hospedagem depende das credenciais e serviços da igreja.
