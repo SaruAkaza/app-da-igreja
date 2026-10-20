@@ -6,7 +6,9 @@ import { db } from '../config/database.js';
 export const createDevotional = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
-    if (!userId) {
+    const churchId = req.user?.church_id;
+
+    if (!userId || !churchId) {
       return res.status(401).json({ error: 'Usuário não autenticado.' });
     }
 
@@ -14,7 +16,6 @@ export const createDevotional = async (req: Request, res: Response) => {
     let imageUrl = '';
 
     if (req.file) {
-      // Arquivo enviado via upload multipart
       imageUrl = `/uploads/devotionals/${req.file.filename}`;
     } else if (req.body.imageUrl) {
       imageUrl = req.body.imageUrl;
@@ -26,10 +27,9 @@ export const createDevotional = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Identificador do grupo é obrigatório.' });
     }
 
-    // Verificar se o usuário participa do grupo
+    // Auto ingressar se ainda não for membro
     const membership = db.prepare('SELECT id FROM group_members WHERE group_id = ? AND user_id = ?').get(groupId, userId);
     if (!membership) {
-      // Ingressar automaticamente se for o grupo padrão
       db.prepare(`
         INSERT INTO group_members (id, group_id, user_id, joined_at)
         VALUES (?, ?, ?, ?)
@@ -39,7 +39,7 @@ export const createDevotional = async (req: Request, res: Response) => {
     const today = new Date().toISOString().slice(0, 10);
     const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
-    // Verificar se já postou neste grupo hoje
+    // Limite de 1 envio pontuado por grupo por dia
     const alreadyPostedInGroup = db.prepare(`
       SELECT id FROM devotionals 
       WHERE group_id = ? AND user_id = ? AND devotional_date = ?
@@ -51,39 +51,36 @@ export const createDevotional = async (req: Request, res: Response) => {
       });
     }
 
-    // Buscar dados atuais do usuário
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId) as any;
 
     let newStreak = user.current_streak;
     let streakBonus = 0;
 
-    // Se o usuário ainda não fez devocional hoje em nenhum grupo
     if (user.last_devotional_date !== today) {
       if (user.last_devotional_date === yesterday) {
         newStreak = user.current_streak + 1;
       } else {
-        newStreak = 1; // Primeiro dia ou reinício de sequência
+        newStreak = 1;
       }
-      // Bônus de streak: 10 pontos por dia consecutivo (limitado a +100 por dia)
       streakBonus = Math.min(newStreak * 10, 100);
     }
 
     const highestStreak = Math.max(user.highest_streak, newStreak);
-    const basePoints = 50; // Pontos pelo envio autêntico da folha
+    const basePoints = 50;
     const totalPointsAwarded = basePoints + streakBonus;
     const newTotalPoints = user.total_points + totalPointsAwarded;
 
     const devotionalId = `dev-${crypto.randomUUID()}`;
     const now = new Date().toISOString();
 
-    // Iniciar transação no SQLite para garantir consistência
     const insertTransaction = db.transaction(() => {
       // 1. Criar Devocional
       db.prepare(`
-        INSERT INTO devotionals (id, group_id, user_id, image_url, passage_or_chapter, notes, points_awarded, devotional_date, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO devotionals (id, church_id, group_id, user_id, image_url, passage_or_chapter, notes, points_awarded, devotional_date, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         devotionalId,
+        churchId,
         groupId,
         userId,
         imageUrl,
@@ -101,34 +98,51 @@ export const createDevotional = async (req: Request, res: Response) => {
         WHERE id = ?
       `).run(newTotalPoints, newStreak, highestStreak, today, userId);
 
-      // 3. Registrar Histórico de Pontos
+      // 3. Histórico de Pontos
       db.prepare(`
-        INSERT INTO point_history (id, user_id, amount, reason, reference_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(`ph-${crypto.randomUUID()}`, userId, basePoints, 'devotional_post', devotionalId, now);
+        INSERT INTO point_history (id, church_id, user_id, amount, reason, reference_id, created_at)
+        VALUES (?, ?, ?, ?, 'devotional_post', ?, ?)
+      `).run(`ph-${crypto.randomUUID()}`, churchId, userId, basePoints, devotionalId, now);
 
       if (streakBonus > 0) {
         db.prepare(`
-          INSERT INTO point_history (id, user_id, amount, reason, reference_id, created_at)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(`ph-${crypto.randomUUID()}`, userId, streakBonus, 'streak_bonus', devotionalId, now);
+          INSERT INTO point_history (id, church_id, user_id, amount, reason, reference_id, created_at)
+          VALUES (?, ?, ?, ?, 'streak_bonus', ?, ?)
+        `).run(`ph-${crypto.randomUUID()}`, churchId, userId, streakBonus, devotionalId, now);
+      }
+
+      // 4. Se a igreja participa de uma Gincana Inter-Igrejas ativa, pontua a congregação no desafio!
+      const activeChallenge = db.prepare(`
+        SELECT cp.id, cp.total_points_earned 
+        FROM challenge_participants cp
+        INNER JOIN inter_church_challenges icc ON icc.id = cp.challenge_id
+        WHERE cp.church_id = ? AND icc.status = 'active'
+        LIMIT 1
+      `).get(churchId) as any;
+
+      if (activeChallenge) {
+        db.prepare(`
+          UPDATE challenge_participants
+          SET total_points_earned = total_points_earned + ?
+          WHERE id = ?
+        `).run(totalPointsAwarded, activeChallenge.id);
       }
     });
 
     insertTransaction();
 
-    // 4. Verificar se o novo total de pontos desbloqueia novos cupons no trimestre ativo
+    // 5. Verificar desbloqueio de cupons no trimestre da igreja
     const unlockedCoupons: any[] = [];
-    const activeQuarter = db.prepare('SELECT id, title FROM quarters WHERE is_active = 1 LIMIT 1').get() as any;
+    const activeQuarter = db.prepare('SELECT id FROM quarters WHERE church_id = ? AND is_active = 1 LIMIT 1').get(churchId) as any;
 
     if (activeQuarter) {
       const eligibleRewards = db.prepare(`
         SELECT r.* FROM rewards r
-        WHERE r.quarter_id = ? AND r.points_required <= ?
+        WHERE r.quarter_id = ? AND r.church_id = ? AND r.points_required <= ?
         AND NOT EXISTS (
           SELECT 1 FROM user_coupons uc WHERE uc.reward_id = r.id AND uc.user_id = ?
         )
-      `).all(activeQuarter.id, newTotalPoints, userId) as any[];
+      `).all(activeQuarter.id, churchId, newTotalPoints, userId) as any[];
 
       for (const reward of eligibleRewards) {
         const couponId = `cp-${crypto.randomUUID()}`;
@@ -137,9 +151,9 @@ export const createDevotional = async (req: Request, res: Response) => {
         const qrData = await QRCode.toDataURL(code);
 
         db.prepare(`
-          INSERT INTO user_coupons (id, user_id, reward_id, coupon_code, qr_code_data, status, created_at)
-          VALUES (?, ?, ?, ?, ?, 'active', ?)
-        `).run(couponId, userId, reward.id, code, qrData, now);
+          INSERT INTO user_coupons (id, church_id, user_id, reward_id, coupon_code, qr_code_data, status, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
+        `).run(couponId, churchId, userId, reward.id, code, qrData, now);
 
         unlockedCoupons.push({
           id: couponId,
@@ -153,14 +167,12 @@ export const createDevotional = async (req: Request, res: Response) => {
     }
 
     return res.status(201).json({
-      message: 'Devocional publicado com sucesso! Parabéns pela fidelidade!',
+      message: 'Devocional registrado! Sua anotação foi entregue ao seu líder para discipulado com total sigilo.',
       devotional: {
         id: devotionalId,
         group_id: groupId,
         user_id: userId,
-        image_url: imageUrl,
         passage_or_chapter: passageOrChapter,
-        notes,
         points_awarded: totalPointsAwarded,
         devotional_date: today,
         created_at: now,
@@ -183,48 +195,101 @@ export const createDevotional = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * FEED COM PRIVACIDADE RIGOROSA:
+ * - O feed da congregação celebra a fidelidade comunitária.
+ * - Para membros em geral: a foto e a anotação pessoal NÃO SÃO ENVIADAS (são null).
+ * - Apenas o próprio autor, o líder responsável pelo grupo ou o pastor geral têm acesso à foto e anotação.
+ */
 export const getFeed = (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
+    const churchId = req.user?.church_id;
+    const userRole = req.user?.role;
     const { groupId, page = 1, limit = 20 } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
 
     let query = `
       SELECT 
-        d.*,
+        d.id,
+        d.group_id,
+        d.user_id,
+        d.image_url,
+        d.passage_or_chapter,
+        d.notes,
+        d.points_awarded,
+        d.devotional_date,
+        d.created_at,
         u.name AS user_name,
         u.avatar_url AS user_avatar,
         u.role AS user_role,
         u.current_streak AS user_streak,
         g.title AS group_title,
+        g.leader_id AS group_leader_id,
         (SELECT COUNT(*) FROM reactions r WHERE r.devotional_id = d.id AND r.reaction_type = 'amen') AS amen_count,
         (SELECT COUNT(*) FROM reactions r WHERE r.devotional_id = d.id AND r.reaction_type = 'glory') AS glory_count,
         (SELECT COUNT(*) FROM reactions r WHERE r.devotional_id = d.id AND r.reaction_type = 'heart') AS heart_count,
         EXISTS(SELECT 1 FROM reactions r WHERE r.devotional_id = d.id AND r.user_id = ? AND r.reaction_type = 'amen') AS reacted_amen,
         EXISTS(SELECT 1 FROM reactions r WHERE r.devotional_id = d.id AND r.user_id = ? AND r.reaction_type = 'glory') AS reacted_glory,
-        EXISTS(SELECT 1 FROM reactions r WHERE r.devotional_id = d.id AND r.user_id = ? AND r.reaction_type = 'heart') AS reacted_heart
+        EXISTS(SELECT 1 FROM reactions r WHERE r.devotional_id = d.id AND r.user_id = ? AND r.reaction_type = 'heart') AS reacted_heart,
+        (SELECT pastoral_guidance FROM leader_feedbacks lf WHERE lf.devotional_id = d.id LIMIT 1) AS leader_feedback
       FROM devotionals d
       INNER JOIN users u ON u.id = d.user_id
       INNER JOIN groups g ON g.id = d.group_id
+      WHERE d.church_id = ?
     `;
 
-    const params: any[] = [userId, userId, userId];
+    const params: any[] = [userId, userId, userId, churchId];
 
     if (groupId) {
-      query += ` WHERE d.group_id = ? `;
+      query += ` AND d.group_id = ? `;
       params.push(groupId);
     } else {
-      // Se não especificou grupo, traz o feed dos grupos em que o usuário participa
-      query += ` WHERE d.group_id IN (SELECT group_id FROM group_members WHERE user_id = ?) `;
+      query += ` AND d.group_id IN (SELECT group_id FROM group_members WHERE user_id = ?) `;
       params.push(userId);
     }
 
     query += ` ORDER BY d.created_at DESC LIMIT ? OFFSET ? `;
     params.push(Number(limit), offset);
 
-    const posts = db.prepare(query).all(...params);
+    const posts = db.prepare(query).all(...params) as any[];
 
-    return res.json(posts);
+    // Sanitização de privacidade por linha
+    const safePosts = posts.map((post) => {
+      const isAuthor = post.user_id === userId;
+      const isGroupLeader = post.group_leader_id === userId;
+      const isPastorOrAdmin = userRole === 'church_admin' || userRole === 'super_admin';
+      const hasFullAccess = isAuthor || isGroupLeader || isPastorOrAdmin;
+
+      return {
+        id: post.id,
+        group_id: post.group_id,
+        user_id: post.user_id,
+        user_name: post.user_name,
+        user_avatar: post.user_avatar,
+        user_role: post.user_role,
+        user_streak: post.user_streak,
+        group_title: post.group_title,
+        devotional_date: post.devotional_date,
+        created_at: post.created_at,
+        passage_or_chapter: post.passage_or_chapter,
+        points_awarded: post.points_awarded,
+        amen_count: post.amen_count,
+        glory_count: post.glory_count,
+        heart_count: post.heart_count,
+        reacted_amen: Boolean(post.reacted_amen),
+        reacted_glory: Boolean(post.reacted_glory),
+        reacted_heart: Boolean(post.reacted_heart),
+        has_feedback: Boolean(post.leader_feedback),
+        // Privacidade estrita: só expõe a folha e anotações para quem tem autorização
+        image_url: hasFullAccess ? post.image_url : null,
+        notes: hasFullAccess ? post.notes : null,
+        is_private_protected: !hasFullAccess,
+        leader_feedback: isAuthor || isGroupLeader || isPastorOrAdmin ? post.leader_feedback : null,
+      };
+    });
+
+    return res.json(safePosts);
   } catch (err: any) {
     console.error('Erro ao buscar feed:', err);
     return res.status(500).json({ error: 'Erro ao buscar publicações do feed.' });
@@ -235,7 +300,7 @@ export const toggleReaction = (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
     const { devotionalId } = req.params;
-    const { reactionType } = req.body; // 'amen', 'glory', 'heart'
+    const { reactionType } = req.body;
 
     if (!['amen', 'glory', 'heart'].includes(reactionType)) {
       return res.status(400).json({ error: "Tipo de reação inválido. Use 'amen', 'glory' ou 'heart'." });
@@ -257,5 +322,123 @@ export const toggleReaction = (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('Erro em toggleReaction:', err);
     return res.status(500).json({ error: 'Erro ao processar reação.' });
+  }
+};
+
+/**
+ * DISCIPULADO: O Líder do Grupo busca os devocionais para orientar os membros
+ */
+export const getLeaderDevotionals = (req: Request, res: Response) => {
+  try {
+    const leaderId = req.user?.id;
+    const churchId = req.user?.church_id;
+    const userRole = req.user?.role;
+
+    let query = `
+      SELECT 
+        d.*,
+        u.name AS member_name,
+        u.email AS member_email,
+        u.avatar_url AS member_avatar,
+        u.current_streak AS member_streak,
+        g.title AS group_title,
+        (SELECT pastoral_guidance FROM leader_feedbacks lf WHERE lf.devotional_id = d.id LIMIT 1) AS existing_feedback,
+        (SELECT created_at FROM leader_feedbacks lf WHERE lf.devotional_id = d.id LIMIT 1) AS feedback_date
+      FROM devotionals d
+      INNER JOIN users u ON u.id = d.user_id
+      INNER JOIN groups g ON g.id = d.group_id
+      WHERE d.church_id = ?
+    `;
+
+    const params: any[] = [churchId];
+
+    // Se for pastor/admin geral da igreja, vê todos. Se for líder de grupo, vê os grupos dele.
+    if (userRole !== 'church_admin' && userRole !== 'super_admin') {
+      query += ` AND g.leader_id = ? `;
+      params.push(leaderId);
+    }
+
+    query += ` ORDER BY d.created_at DESC LIMIT 50 `;
+
+    const devotionals = db.prepare(query).all(...params);
+    return res.json(devotionals);
+  } catch (err: any) {
+    console.error('Erro em getLeaderDevotionals:', err);
+    return res.status(500).json({ error: 'Erro ao carregar devocionais para discipulado.' });
+  }
+};
+
+/**
+ * DISCIPULADO: O Líder envia uma orientação pastoral privada / dica exegética
+ */
+export const submitLeaderFeedback = (req: Request, res: Response) => {
+  try {
+    const leaderId = req.user?.id;
+    const churchId = req.user?.church_id;
+    const { devotionalId } = req.params;
+    const { pastoralGuidance } = req.body;
+
+    if (!pastoralGuidance || !pastoralGuidance.trim()) {
+      return res.status(400).json({ error: 'Escreva a orientação pastoral para o membro.' });
+    }
+
+    const devotional = db.prepare('SELECT * FROM devotionals WHERE id = ? AND church_id = ?').get(devotionalId, churchId) as any;
+    if (!devotional) {
+      return res.status(404).json({ error: 'Devocional não encontrado.' });
+    }
+
+    const feedbackId = `fb-${crypto.randomUUID()}`;
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      INSERT INTO leader_feedbacks (id, church_id, group_id, devotional_id, leader_id, member_id, pastoral_guidance, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(feedbackId, churchId, devotional.group_id, devotional.id, leaderId, devotional.user_id, pastoralGuidance.trim(), now);
+
+    return res.status(201).json({
+      message: 'Orientação pastoral enviada com sucesso! O membro receberá sua dica com total sigilo.',
+      feedback: {
+        id: feedbackId,
+        pastoral_guidance: pastoralGuidance.trim(),
+        created_at: now,
+      },
+    });
+  } catch (err: any) {
+    console.error('Erro em submitLeaderFeedback:', err);
+    return res.status(500).json({ error: 'Erro ao enviar orientação pastoral.' });
+  }
+};
+
+/**
+ * DISCIPULADO: O Membro consulta suas orientações pastorais recebidas
+ */
+export const getMyFeedbacks = (req: Request, res: Response) => {
+  try {
+    const memberId = req.user?.id;
+    const churchId = req.user?.church_id;
+
+    const feedbacks = db.prepare(`
+      SELECT 
+        lf.id,
+        lf.pastoral_guidance,
+        lf.created_at AS feedback_date,
+        d.passage_or_chapter,
+        d.devotional_date,
+        d.notes AS my_notes,
+        g.title AS group_title,
+        u.name AS leader_name,
+        u.avatar_url AS leader_avatar
+      FROM leader_feedbacks lf
+      INNER JOIN devotionals d ON d.id = lf.devotional_id
+      INNER JOIN groups g ON g.id = lf.group_id
+      INNER JOIN users u ON u.id = lf.leader_id
+      WHERE lf.member_id = ? AND lf.church_id = ?
+      ORDER BY lf.created_at DESC
+    `).all(memberId, churchId);
+
+    return res.json(feedbacks);
+  } catch (err: any) {
+    console.error('Erro em getMyFeedbacks:', err);
+    return res.status(500).json({ error: 'Erro ao buscar orientações pastorais.' });
   }
 };

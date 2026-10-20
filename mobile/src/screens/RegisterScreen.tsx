@@ -18,16 +18,17 @@ export const RegisterScreen: React.FC<{ navigation: any }> = ({ navigation }) =>
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [churchCode, setChurchCode] = useState('VIDEIRA26');
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
     if (!name || !email || !password) {
-      Alert.alert('Campos Obrigatórios', 'Por favor, preencha nome, e-mail e senha.');
+      Alert.alert('Campos Obrigatórios', 'Por favor, preencha seu nome, e-mail e senha.');
       return;
     }
     setLoading(true);
     try {
-      await register(name, email, password);
+      await register(name, email, password, churchCode.trim());
     } catch (err: any) {
       const msg = err.response?.data?.error || 'Erro ao realizar cadastro.';
       Alert.alert('Erro', msg);
@@ -42,11 +43,21 @@ export const RegisterScreen: React.FC<{ navigation: any }> = ({ navigation }) =>
         <View style={styles.header}>
           <Text style={styles.title}>Criar Minha Conta</Text>
           <Text style={styles.subtitle}>
-            Junte-se à nossa comunidade para cultivar o hábito diário de estar com Deus.
+            Junte-se à sua congregação para cultivar o hábito diário de leitura e comunhão.
           </Text>
         </View>
 
         <View style={styles.formCard}>
+          <Text style={styles.inputLabel}>CÓDIGO DA SUA IGREJA</Text>
+          <TextInput
+            value={churchCode}
+            onChangeText={(t) => setChurchCode(t.toUpperCase())}
+            placeholder="Ex: VIDEIRA26 ou MEMORIAL26"
+            autoCapitalize="characters"
+            style={styles.inputHighlight}
+          />
+          <Text style={styles.inputHint}>Peça o código de convite ao seu pastor ou líder de célula.</Text>
+
           <Text style={styles.inputLabel}>SEU NOME COMPLETO</Text>
           <TextInput
             value={name}
@@ -129,10 +140,6 @@ const styles = StyleSheet.create({
     width: '100%',
     borderWidth: 1.5,
     borderColor: Colors.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
     elevation: 3,
   },
   inputLabel: {
@@ -153,6 +160,25 @@ const styles = StyleSheet.create({
     fontSize: Typography.bodyLarge,
     color: Colors.textPrimary,
     minHeight: 54,
+  },
+  inputHighlight: {
+    backgroundColor: Colors.primarySurface,
+    borderWidth: 2,
+    borderColor: Colors.primaryLight,
+    borderRadius: 14,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 14,
+    fontSize: Typography.titleMedium,
+    fontWeight: '800',
+    color: Colors.primaryDark,
+    textAlign: 'center',
+    minHeight: 54,
+  },
+  inputHint: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginTop: 4,
+    marginBottom: 8,
   },
   registerBtn: {
     marginTop: Spacing.md,

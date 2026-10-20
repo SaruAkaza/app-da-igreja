@@ -7,8 +7,8 @@ interface AuthContextData {
   token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  loginDemo: (userType: 'maria' | 'joao' | 'lider' | 'admin') => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  loginDemo: (userType: 'maria' | 'joao' | 'lider' | 'admin' | 'raquel' | 'pastor_memorial') => Promise<void>;
+  register: (name: string, email: string, password: string, churchCode?: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -33,7 +33,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (savedToken && savedUser) {
         setToken(savedToken);
         setUser(JSON.parse(savedUser));
-        // Atualiza dados frescos do servidor
         fetchFreshProfile(savedToken);
       }
     } catch (e) {
@@ -51,7 +50,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(res.data);
       await AsyncStorage.setItem('church_auth_user', JSON.stringify(res.data));
     } catch (err) {
-      console.error('Falha ao atualizar perfil fresco:', err);
+      console.error('Falha ao atualizar perfil:', err);
     }
   };
 
@@ -66,18 +65,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await AsyncStorage.setItem('church_auth_user', JSON.stringify(receivedUser));
   };
 
-  const loginDemo = async (userType: 'maria' | 'joao' | 'lider' | 'admin') => {
+  const loginDemo = async (userType: 'maria' | 'joao' | 'lider' | 'admin' | 'raquel' | 'pastor_memorial') => {
     const demoEmails = {
       maria: 'maria@igreja.com',
       joao: 'joao@igreja.com',
       lider: 'lider@igreja.com',
       admin: 'admin@igreja.com',
+      raquel: 'raquel@memorial.com',
+      pastor_memorial: 'pastor.silas@memorial.com',
     };
     await login(demoEmails[userType], '123456');
   };
 
-  const register = async (name: string, email: string, password: string) => {
-    const res = await api.post('/api/auth/register', { name, email, password });
+  const register = async (name: string, email: string, password: string, churchCode?: string) => {
+    const res = await api.post('/api/auth/register', { name, email, password, churchCode });
     const { token: receivedToken, user: receivedUser } = res.data;
 
     setToken(receivedToken);

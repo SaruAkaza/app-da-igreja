@@ -55,7 +55,36 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
         }
       >
-        {/* Card de Ação Principal do Dia (Super Acessível) */}
+        {/* Identificação da Igreja */}
+        <View style={styles.churchBadgeCard}>
+          <Text style={styles.churchEmoji}>⛪</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.churchName}>{user?.church_name || 'Igreja Parceira'}</Text>
+            <Text style={styles.churchCode}>Código da congregação: {user?.church_code}</Text>
+          </View>
+        </View>
+
+        {/* Card Alerta de Orientação Pastoral / Discipulado */}
+        {user?.feedbacks_count && user.feedbacks_count > 0 ? (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('Feedbacks')}
+            style={styles.pastoralAlertCard}
+          >
+            <Text style={styles.pastoralAlertEmoji}>💌</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.pastoralAlertTitle}>
+                Você tem {user.feedbacks_count} dica(s) bíblica(s) do seu líder!
+              </Text>
+              <Text style={styles.pastoralAlertSub}>
+                Toque aqui para ler as orientações pastorais enviadas para você.
+              </Text>
+            </View>
+            <Text style={styles.pastoralAlertArrow}>Ler ›</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {/* Card de Ação Principal do Dia */}
         <View style={[styles.actionCard, todayCompleted ? styles.actionCardDone : styles.actionCardPending]}>
           <View style={styles.actionHeader}>
             <Text style={styles.actionIcon}>{todayCompleted ? '🌟' : '📖'}</Text>
@@ -65,8 +94,8 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
               </Text>
               <Text style={styles.actionSubtitle}>
                 {todayCompleted
-                  ? 'Glória a Deus! Você já enviou sua folha de anotação hoje e manteve sua chama acesa.'
-                  : 'Abra sua Bíblia ou livro de estudo, anote suas reflexões no caderno e envie a foto da folha.'}
+                  ? 'Glória a Deus! Sua anotação foi enviada em sigilo ao líder e sua chama continua acesa.'
+                  : 'Abra sua Bíblia ou livro de estudo, anote suas reflexões no caderno e fotografe a folha.'}
               </Text>
             </View>
           </View>
@@ -74,7 +103,7 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
           {todayCompleted ? (
             <AccessibleButton
               title="👥 Ver o Feed dos Irmãos"
-              subtitle="Veja o que os outros irmãos aprenderam hoje"
+              subtitle="Veja quem cumpriu a leitura hoje na igreja"
               variant="outline"
               onPress={() => navigation.navigate('Feed')}
               style={styles.actionBtn}
@@ -90,23 +119,28 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
           )}
         </View>
 
-        {/* Atalho para Recompensas do Trimestre */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('Rewards')}
-          style={styles.rewardsBanner}
-        >
-          <View style={styles.rewardsLeft}>
-            <Text style={styles.rewardsIcon}>🎁</Text>
-            <View>
-              <Text style={styles.rewardsTitle}>Recompensas do 1º Trimestre</Text>
-              <Text style={styles.rewardsSubtitle}>
-                Você tem {user?.total_points || 0} pontos acumulados
-              </Text>
-            </View>
-          </View>
-          <Text style={styles.rewardsArrow}>Ver Prêmios ›</Text>
-        </TouchableOpacity>
+        {/* Atalhos: Batalha de Células & Prêmios */}
+        <View style={styles.shortcutsRow}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('GroupsRanking')}
+            style={styles.shortcutBox}
+          >
+            <Text style={styles.shortcutIcon}>🏆</Text>
+            <Text style={styles.shortcutTitle}>Batalha de Células</Text>
+            <Text style={styles.shortcutSub}>Ranking dos grupos</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('Rewards')}
+            style={styles.shortcutBox}
+          >
+            <Text style={styles.shortcutIcon}>🎁</Text>
+            <Text style={styles.shortcutTitle}>Meus Prêmios</Text>
+            <Text style={styles.shortcutSub}>{user?.total_points || 0} pontos</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Seção Meus Grupos de Leitura */}
         <View style={styles.sectionHeader}>
@@ -150,7 +184,7 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
                   {group.title}
                 </Text>
                 <Text style={styles.groupTheme} numberOfLines={1}>
-                  {group.book_or_theme}
+                  Líder Discipulador: {group.leader_name || 'Pastor'}
                 </Text>
                 <View style={styles.groupFooter}>
                   <Text style={styles.groupStats}>
@@ -171,7 +205,7 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
           <Text style={styles.verseRef}>Salmos 119:105</Text>
         </View>
 
-        {/* Botão de Logout Acessível no final */}
+        {/* Botão de Logout */}
         <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
           <Text style={styles.logoutBtnText}>Encerrar Sessão / Trocar de Usuário</Text>
         </TouchableOpacity>
@@ -188,16 +222,66 @@ const styles = StyleSheet.create({
   scrollContainer: {
     padding: Spacing.md,
   },
+  churchBadgeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: Spacing.sm,
+  },
+  churchEmoji: {
+    fontSize: 24,
+    marginRight: 10,
+  },
+  churchName: {
+    fontSize: Typography.bodyLarge,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  churchCode: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.primaryDark,
+  },
+  pastoralAlertCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.successSurface,
+    borderWidth: 1.5,
+    borderColor: '#86efac',
+    borderRadius: 18,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  pastoralAlertEmoji: {
+    fontSize: 28,
+    marginRight: 12,
+  },
+  pastoralAlertTitle: {
+    fontSize: Typography.bodyMedium,
+    fontWeight: '800',
+    color: '#14532d',
+  },
+  pastoralAlertSub: {
+    fontSize: Typography.bodySmall,
+    color: Colors.success,
+    marginTop: 2,
+  },
+  pastoralAlertArrow: {
+    fontSize: Typography.titleMedium,
+    fontWeight: '900',
+    color: Colors.success,
+    marginLeft: 6,
+  },
   actionCard: {
     borderRadius: 24,
     padding: Spacing.lg,
     marginBottom: Spacing.md,
     borderWidth: 2,
     elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
   },
   actionCardPending: {
     backgroundColor: '#f0fdf4',
@@ -232,40 +316,33 @@ const styles = StyleSheet.create({
   actionBtn: {
     minHeight: 60,
   },
-  rewardsBanner: {
-    backgroundColor: Colors.accentSurface,
-    borderRadius: 18,
-    padding: Spacing.md,
+  shortcutsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: Spacing.sm,
     marginBottom: Spacing.lg,
-    borderWidth: 1.5,
-    borderColor: Colors.accentLight,
   },
-  rewardsLeft: {
-    flexDirection: 'row',
+  shortcutBox: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    padding: Spacing.md,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
     alignItems: 'center',
   },
-  rewardsIcon: {
+  shortcutIcon: {
     fontSize: 28,
-    marginRight: 10,
+    marginBottom: 4,
   },
-  rewardsTitle: {
+  shortcutTitle: {
     fontSize: Typography.bodyMedium,
     fontWeight: '800',
     color: Colors.textPrimary,
   },
-  rewardsSubtitle: {
+  shortcutSub: {
     fontSize: Typography.bodySmall,
-    color: Colors.accent,
-    fontWeight: '600',
+    color: Colors.textSecondary,
     marginTop: 2,
-  },
-  rewardsArrow: {
-    fontSize: Typography.bodyMedium,
-    fontWeight: '800',
-    color: Colors.accent,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -326,7 +403,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
     color: Colors.primary,
-    letterSpacing: 0.5,
   },
   postedBadge: {
     backgroundColor: Colors.successSurface,

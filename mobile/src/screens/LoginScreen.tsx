@@ -21,7 +21,6 @@ export const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Modal para configurar IP do Backend (útil para Expo Go no celular físico)
   const [configModalVisible, setConfigModalVisible] = useState(false);
   const [customIp, setCustomIp] = useState(api.defaults.baseURL || 'http://localhost:3000');
 
@@ -41,12 +40,12 @@ export const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
     }
   };
 
-  const handleDemo = async (type: 'maria' | 'joao' | 'lider' | 'admin') => {
+  const handleDemo = async (type: 'maria' | 'joao' | 'lider' | 'admin' | 'raquel' | 'pastor_memorial') => {
     setLoading(true);
     try {
       await loginDemo(type);
     } catch (err: any) {
-      Alert.alert('Servidor Indisponível', 'Certifique-se de que o backend está rodando (npm run dev na pasta backend).');
+      Alert.alert('Servidor Indisponível', 'Certifique-se de que o backend está rodando.');
     } finally {
       setLoading(false);
     }
@@ -61,16 +60,14 @@ export const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container}>
-        {/* Topo / Logo da Igreja */}
         <View style={styles.header}>
           <Text style={styles.crossIcon}>✝️</Text>
           <Text style={styles.title}>Devocional da Igreja</Text>
           <Text style={styles.subtitle}>
-            Pratique a leitura diária, envie a foto do seu caderno e celebre a comunhão.
+            Plataforma Comunitária de Leitura Bíblica, Discipulado e Constância.
           </Text>
         </View>
 
-        {/* Formulário de Acesso Acessível */}
         <View style={styles.formCard}>
           <Text style={styles.inputLabel}>SEU E-MAIL</Text>
           <TextInput
@@ -103,15 +100,16 @@ export const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
             style={styles.registerLink}
           >
             <Text style={styles.registerLinkText}>
-              Ainda não tem conta? <Text style={styles.boldText}>Cadastre-se aqui</Text>
+              Ainda não tem conta? <Text style={styles.boldText}>Cadastre-se na sua igreja</Text>
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* Acesso Rápido de Demonstração (1 toque) */}
+        {/* Demonstrações Rápidas por Congregação */}
         <View style={styles.demoSection}>
           <Text style={styles.demoTitle}>Ou experimente em 1 toque:</Text>
 
+          <Text style={styles.churchGroupLabel}>⛪ Igreja Videira Central (Código: VIDEIRA26)</Text>
           <AccessibleButton
             title="👵 Dona Maria (Idosa - Sequência 30d 🔥)"
             subtitle="Membro exemplar, nível Ouro alcançado"
@@ -119,33 +117,38 @@ export const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
             onPress={() => handleDemo('maria')}
             style={styles.demoBtn}
           />
-
           <AccessibleButton
             title="🧑 João Pedro (Jovens - Nível Bronze)"
-            subtitle="Devocional em Tiago, sequência ativa"
+            subtitle="Devocional em Tiago, constância ativa"
             variant="secondary"
             onPress={() => handleDemo('joao')}
             style={styles.demoBtn}
           />
-
           <AccessibleButton
-            title="🛡️ Líder Marcos (Validador de QR Code)"
-            subtitle="Acesso à leitura e baixa de cupons nos cultos"
+            title="🛡️ Líder Marcos (Discipulador & Validador)"
+            subtitle="Discipula o grupo de Tiago e valida cupons"
             variant="secondary"
             onPress={() => handleDemo('lider')}
             style={styles.demoBtn}
           />
 
+          <Text style={[styles.churchGroupLabel, { marginTop: 14 }]}>⛪ Igreja Batista Memorial (Código: MEMORIAL26)</Text>
           <AccessibleButton
-            title="👑 Pastor Davi (Administrador)"
-            subtitle="Visão geral, bônus e moderação"
+            title="👩 Raquel Santos (Jovens Memorial - 🔥 18d)"
+            subtitle="Membro participando da Gincana em Provérbios"
             variant="secondary"
-            onPress={() => handleDemo('admin')}
+            onPress={() => handleDemo('raquel')}
+            style={styles.demoBtn}
+          />
+          <AccessibleButton
+            title="👑 Pastor Silas (Admin Batista Memorial)"
+            subtitle="Pastor que aceitou a Gincana Inter-Igrejas"
+            variant="secondary"
+            onPress={() => handleDemo('pastor_memorial')}
             style={styles.demoBtn}
           />
         </View>
 
-        {/* Botão de Configuração de IP */}
         <TouchableOpacity
           onPress={() => setConfigModalVisible(true)}
           style={styles.configBtn}
@@ -155,14 +158,10 @@ export const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
           </Text>
         </TouchableOpacity>
 
-        {/* Modal de Configuração de Servidor */}
         <Modal visible={configModalVisible} transparent animationType="fade">
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>Conexão com o Servidor</Text>
-              <Text style={styles.modalSubtitle}>
-                Se estiver testando no celular físico via Expo Go, informe o IP do seu computador na rede Wi-Fi (ex: http://192.168.1.50:3000):
-              </Text>
               <TextInput
                 value={customIp}
                 onChangeText={setCustomIp}
@@ -172,7 +171,7 @@ export const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
               />
               <View style={styles.modalActions}>
                 <AccessibleButton
-                  title="Salvar Endereço"
+                  title="Salvar"
                   onPress={handleSaveApiUrl}
                   style={{ flex: 1, marginRight: 8 }}
                 />
@@ -206,8 +205,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.sm,
   },
   crossIcon: {
-    fontSize: 48,
-    marginBottom: 8,
+    fontSize: 44,
+    marginBottom: 6,
   },
   title: {
     fontSize: Typography.titleHero,
@@ -219,7 +218,7 @@ const styles = StyleSheet.create({
     fontSize: Typography.bodyMedium,
     color: Colors.textSecondary,
     textAlign: 'center',
-    marginTop: 6,
+    marginTop: 4,
     lineHeight: 22,
   },
   formCard: {
@@ -229,10 +228,6 @@ const styles = StyleSheet.create({
     width: '100%',
     borderWidth: 1.5,
     borderColor: Colors.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
     elevation: 3,
   },
   inputLabel: {
@@ -277,17 +272,23 @@ const styles = StyleSheet.create({
   },
   demoTitle: {
     fontSize: Typography.bodyMedium,
-    fontWeight: '700',
-    color: Colors.textSecondary,
+    fontWeight: '800',
+    color: Colors.textPrimary,
     marginBottom: Spacing.sm,
     textAlign: 'center',
   },
+  churchGroupLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.primaryDark,
+    marginBottom: 6,
+  },
   demoBtn: {
-    marginBottom: Spacing.xs,
-    minHeight: 58,
+    marginBottom: 6,
+    minHeight: 54,
   },
   configBtn: {
-    marginTop: Spacing.lg,
+    marginTop: Spacing.md,
     marginBottom: Spacing.xl,
     padding: Spacing.sm,
   },
@@ -315,12 +316,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: Colors.textPrimary,
     marginBottom: 8,
-  },
-  modalSubtitle: {
-    fontSize: Typography.bodySmall,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.md,
-    lineHeight: 18,
   },
   modalActions: {
     flexDirection: 'row',

@@ -2,8 +2,6 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-// No Android emulator usa-se 10.0.2.2; no iOS / Web usa-se localhost.
-// Em celular físico na mesma rede Wi-Fi, pode-se informar o IP do computador.
 export const DEFAULT_API_URL = Platform.select({
   android: 'http://10.0.2.2:3000',
   default: 'http://localhost:3000',
@@ -34,7 +32,6 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// Resposta formatada da imagem para visualização
 export const formatImageUrl = (path: string | undefined): string => {
   if (!path) return 'https://images.unsplash.com/photo-1517842645767-c639042777db?w=800';
   if (path.startsWith('http://') || path.startsWith('https://')) return path;
@@ -43,18 +40,25 @@ export const formatImageUrl = (path: string | undefined): string => {
 
 export interface User {
   id: string;
+  church_id: string;
+  church_name?: string;
+  church_code?: string;
   name: string;
   email: string;
-  role: 'member' | 'leader' | 'admin';
+  role: 'member' | 'leader' | 'church_admin' | 'super_admin';
   current_streak: number;
   highest_streak: number;
   total_points: number;
   avatar_url?: string;
   completed_today?: boolean;
+  feedbacks_count?: number;
 }
 
 export interface Group {
   id: string;
+  church_id: string;
+  leader_id?: string;
+  leader_name?: string;
   title: string;
   description: string;
   category: 'biblia' | 'livro';
@@ -76,9 +80,10 @@ export interface Devotional {
   user_role: string;
   user_streak: number;
   group_title: string;
-  image_url: string;
+  image_url?: string | null;
   passage_or_chapter?: string;
-  notes?: string;
+  notes?: string | null;
+  is_private_protected?: boolean;
   points_awarded: number;
   devotional_date: string;
   created_at: string;
@@ -88,6 +93,56 @@ export interface Devotional {
   reacted_amen: boolean;
   reacted_glory: boolean;
   reacted_heart: boolean;
+  leader_feedback?: string | null;
+}
+
+export interface LeaderFeedback {
+  id: string;
+  pastoral_guidance: string;
+  feedback_date: string;
+  passage_or_chapter: string;
+  devotional_date: string;
+  group_title: string;
+  leader_name: string;
+  leader_avatar?: string;
+}
+
+export interface GroupRanking {
+  position: number;
+  id: string;
+  title: string;
+  category: string;
+  leader_name?: string;
+  total_members: number;
+  total_devotionals: number;
+  total_group_points: number;
+  avg_streak: number;
+  avg_points_per_member: number;
+  badge?: string | null;
+}
+
+export interface ChallengeLeaderboardItem {
+  position: number;
+  church_id: string;
+  church_name: string;
+  church_logo: string;
+  city: string;
+  state: string;
+  total_points_earned: number;
+  active_members_count: number;
+  badge: string;
+}
+
+export interface ActiveChallenge {
+  active_challenge: {
+    id: string;
+    title: string;
+    description: string;
+    invite_code: string;
+    start_date: string;
+    end_date: string;
+  } | null;
+  leaderboard: ChallengeLeaderboardItem[];
 }
 
 export interface Reward {

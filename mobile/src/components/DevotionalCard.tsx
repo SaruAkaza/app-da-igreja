@@ -29,7 +29,6 @@ export const DevotionalCard: React.FC<DevotionalCardProps> = ({
   const [reactedHeart, setReactedHeart] = useState(devotional.reacted_heart || false);
 
   const handleToggleReaction = async (type: 'amen' | 'glory' | 'heart') => {
-    // Atualização otimista na interface
     if (type === 'amen') {
       setAmenCount((prev) => (reactedAmen ? prev - 1 : prev + 1));
       setReactedAmen(!reactedAmen);
@@ -49,7 +48,8 @@ export const DevotionalCard: React.FC<DevotionalCardProps> = ({
     }
   };
 
-  const imageFullUrl = formatImageUrl(devotional.image_url);
+  const isProtected = devotional.is_private_protected;
+  const imageFullUrl = formatImageUrl(devotional.image_url || undefined);
 
   return (
     <View style={styles.card}>
@@ -80,38 +80,68 @@ export const DevotionalCard: React.FC<DevotionalCardProps> = ({
         </View>
       </View>
 
-      {/* Foto da Folha de Caderno com toque para ampliar */}
-      <TouchableOpacity
-        activeOpacity={0.9}
-        onPress={() => setZoomVisible(true)}
-        style={styles.imageWrapper}
-      >
-        <Image
-          source={{ uri: imageFullUrl }}
-          style={styles.devotionalImage}
-          resizeMode="cover"
-        />
-        <View style={styles.zoomPill}>
-          <Text style={styles.zoomPillText}>🔍 Toque para ampliar a folha</Text>
-        </View>
-      </TouchableOpacity>
-
-      {/* Passagem Bíblica / Livro e Anotações */}
-      <View style={styles.contentBody}>
-        {devotional.passage_or_chapter ? (
-          <View style={styles.passageBadge}>
-            <Text style={styles.passageText}>
-              📖 {devotional.passage_or_chapter}
+      {/* Conteúdo: Se protegido (outro irmão), exibe celebração da fidelidade com total privacidade */}
+      {isProtected ? (
+        <View style={styles.protectedBox}>
+          <Text style={styles.protectedIcon}>📖</Text>
+          <Text style={styles.protectedTitle}>Devocional Entregue com Fidelidade</Text>
+          <Text style={styles.protectedPassage}>
+            Passagem: <strong>{devotional.passage_or_chapter || 'Estudo do Dia'}</strong>
+          </Text>
+          <View style={styles.protectedBadge}>
+            <Text style={styles.protectedBadgeText}>
+              🔒 Anotação manuscrita entregue em sigilo ao líder para discipulado.
             </Text>
           </View>
-        ) : null}
+        </View>
+      ) : (
+        /* Se for o autor ou o líder, exibe a foto manuscrita e as reflexões */
+        <View>
+          {devotional.image_url ? (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => setZoomVisible(true)}
+              style={styles.imageWrapper}
+            >
+              <Image
+                source={{ uri: imageFullUrl }}
+                style={styles.devotionalImage}
+                resizeMode="cover"
+              />
+              <View style={styles.zoomPill}>
+                <Text style={styles.zoomPillText}>🔍 Toque para ampliar a folha</Text>
+              </View>
+            </TouchableOpacity>
+          ) : null}
 
-        {devotional.notes ? (
-          <Text style={styles.notesText}>"{devotional.notes}"</Text>
-        ) : null}
-      </View>
+          <View style={styles.contentBody}>
+            {devotional.passage_or_chapter ? (
+              <View style={styles.passageBadge}>
+                <Text style={styles.passageText}>
+                  📖 {devotional.passage_or_chapter}
+                </Text>
+              </View>
+            ) : null}
 
-      {/* Barra de Reações Bíblicas com botões grandes */}
+            {devotional.notes ? (
+              <Text style={styles.notesText}>"{devotional.notes}"</Text>
+            ) : null}
+
+            {/* Dica do Líder se existir */}
+            {devotional.leader_feedback ? (
+              <View style={styles.feedbackCard}>
+                <View style={styles.feedbackHeader}>
+                  <Text style={styles.feedbackIcon}>💌</Text>
+                  <Text style={styles.feedbackTitle}>Orientação Pastoral do Líder:</Text>
+                </View>
+                <Text style={styles.feedbackText}>"{devotional.leader_feedback}"</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      )}
+
+      {/* Barra de Reações Bíblicas (Amém / Glória / Edificante) */}
       <View style={styles.reactionsBar}>
         <TouchableOpacity
           style={[styles.reactionButton, reactedAmen && styles.reactionButtonActive]}
@@ -147,24 +177,17 @@ export const DevotionalCard: React.FC<DevotionalCardProps> = ({
         </TouchableOpacity>
       </View>
 
-      {/* Modal de Zoom da Folha Manuscrita */}
+      {/* Modal Zoom */}
       <Modal visible={zoomVisible} transparent={false} animationType="fade">
         <SafeAreaView style={styles.modalSafeArea}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Folha de Anotação</Text>
-            <TouchableOpacity
-              onPress={() => setZoomVisible(false)}
-              style={styles.modalCloseButton}
-            >
+            <TouchableOpacity onPress={() => setZoomVisible(false)} style={styles.modalCloseButton}>
               <Text style={styles.modalCloseText}>✕ Fechar</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.modalImageContainer}>
-            <Image
-              source={{ uri: imageFullUrl }}
-              style={styles.modalImage}
-              resizeMode="contain"
-            />
+            <Image source={{ uri: imageFullUrl }} style={styles.modalImage} resizeMode="contain" />
           </View>
         </SafeAreaView>
       </Modal>
@@ -178,12 +201,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginHorizontal: Spacing.md,
     marginVertical: Spacing.sm,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: Colors.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
     elevation: 3,
     overflow: 'hidden',
   },
@@ -242,6 +261,44 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: Colors.primary,
   },
+  protectedBox: {
+    backgroundColor: '#f8fafc',
+    padding: Spacing.lg,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: Colors.border,
+  },
+  protectedIcon: {
+    fontSize: 36,
+    marginBottom: 6,
+  },
+  protectedTitle: {
+    fontSize: Typography.titleMedium,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+    textAlign: 'center',
+  },
+  protectedPassage: {
+    fontSize: Typography.bodyMedium,
+    color: Colors.primaryDark,
+    marginTop: 4,
+    marginBottom: 10,
+  },
+  protectedBadge: {
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  protectedBadgeText: {
+    fontSize: 11,
+    color: Colors.primaryDark,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   imageWrapper: {
     width: '100%',
     height: 280,
@@ -287,6 +344,34 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     lineHeight: 22,
     fontStyle: 'italic',
+  },
+  feedbackCard: {
+    backgroundColor: Colors.successSurface,
+    borderRadius: 14,
+    padding: Spacing.md,
+    marginTop: Spacing.sm,
+    borderWidth: 1,
+    borderColor: '#86efac',
+  },
+  feedbackHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  feedbackIcon: {
+    fontSize: 18,
+    marginRight: 6,
+  },
+  feedbackTitle: {
+    fontSize: Typography.bodySmall,
+    fontWeight: '800',
+    color: Colors.success,
+  },
+  feedbackText: {
+    fontSize: Typography.bodyMedium,
+    color: '#14532d',
+    fontStyle: 'italic',
+    lineHeight: 20,
   },
   reactionsBar: {
     flexDirection: 'row',

@@ -15,13 +15,15 @@ import { PhotoCaptureScreen } from './src/screens/PhotoCaptureScreen';
 import { RewardsScreen } from './src/screens/RewardsScreen';
 import { ExploreGroupsScreen } from './src/screens/ExploreGroupsScreen';
 import { LeaderScannerScreen } from './src/screens/LeaderScannerScreen';
+import { FeedbacksScreen } from './src/screens/FeedbacksScreen';
+import { GroupsRankingScreen } from './src/screens/GroupsRankingScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function MainTabs() {
   const { user } = useAuth();
-  const isLeaderOrAdmin = user?.role === 'leader' || user?.role === 'admin';
+  const isLeaderOrAdmin = user?.role === 'leader' || user?.role === 'church_admin' || user?.role === 'super_admin';
 
   return (
     <Tab.Navigator
@@ -38,7 +40,7 @@ function MainTabs() {
           borderTopWidth: 1,
         },
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: '700',
         },
       }}
@@ -48,7 +50,7 @@ function MainTabs() {
         component={HomeScreen}
         options={{
           tabBarLabel: 'Início',
-          tabBarIcon: ({ color, size }) => <Text style={{ fontSize: 22 }}>🏠</Text>,
+          tabBarIcon: () => <Text style={{ fontSize: 20 }}>🏠</Text>,
         }}
       />
       <Tab.Screen
@@ -56,7 +58,7 @@ function MainTabs() {
         component={GroupFeedScreen}
         options={{
           tabBarLabel: 'Mural',
-          tabBarIcon: ({ color, size }) => <Text style={{ fontSize: 22 }}>👥</Text>,
+          tabBarIcon: () => <Text style={{ fontSize: 20 }}>👥</Text>,
         }}
       />
       <Tab.Screen
@@ -64,27 +66,27 @@ function MainTabs() {
         component={PhotoCaptureScreen}
         options={{
           tabBarLabel: 'Tirar Foto',
-          tabBarIcon: ({ color, size }) => (
+          tabBarIcon: () => (
             <View style={styles.captureTabHighlight}>
-              <Text style={{ fontSize: 24 }}>📸</Text>
+              <Text style={{ fontSize: 22 }}>📸</Text>
             </View>
           ),
         }}
       />
       <Tab.Screen
-        name="Rewards"
-        component={RewardsScreen}
+        name="Feedbacks"
+        component={FeedbacksScreen}
         options={{
-          tabBarLabel: 'Prêmios',
-          tabBarIcon: ({ color, size }) => <Text style={{ fontSize: 22 }}>🎁</Text>,
+          tabBarLabel: 'Dicas Líder',
+          tabBarIcon: () => <Text style={{ fontSize: 20 }}>💌</Text>,
         }}
       />
       <Tab.Screen
-        name="Explore"
-        component={ExploreGroupsScreen}
+        name="GroupsRanking"
+        component={GroupsRankingScreen}
         options={{
-          tabBarLabel: 'Grupos',
-          tabBarIcon: ({ color, size }) => <Text style={{ fontSize: 22 }}>📚</Text>,
+          tabBarLabel: 'Células',
+          tabBarIcon: () => <Text style={{ fontSize: 20 }}>🏆</Text>,
         }}
       />
       {isLeaderOrAdmin && (
@@ -93,7 +95,7 @@ function MainTabs() {
           component={LeaderScannerScreen}
           options={{
             tabBarLabel: 'Líder',
-            tabBarIcon: ({ color, size }) => <Text style={{ fontSize: 22 }}>🛡️</Text>,
+            tabBarIcon: () => <Text style={{ fontSize: 20 }}>🛡️</Text>,
           }}
         />
       )}
@@ -108,7 +110,7 @@ function NavigationRoot() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Carregando aplicativo da igreja...</Text>
+        <Text style={styles.loadingText}>Carregando congregação...</Text>
       </View>
     );
   }
@@ -117,7 +119,11 @@ function NavigationRoot() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
-          <Stack.Screen name="MainTabs" component={MainTabs} />
+          <>
+            <Stack.Screen name="MainTabs" component={MainTabs} />
+            <Stack.Screen name="Rewards" component={RewardsScreen} />
+            <Stack.Screen name="Explore" component={ExploreGroupsScreen} />
+          </>
         ) : (
           <>
             <Stack.Screen name="Login" component={LoginScreen} />
@@ -152,9 +158,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   captureTabHighlight: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: Colors.primarySurface,
     justifyContent: 'center',
     alignItems: 'center',
