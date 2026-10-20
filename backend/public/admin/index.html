@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel Administrativo - App Devocional da Igreja</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+          },
+          colors: {
+            church: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+              800: '#1e40af',
+              900: '#1e3a8a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; }
+    .badge-bronze { background: #fed7aa; color: #9a3412; }
+    .badge-silver { background: #e2e8f0; color: #334155; }
+    .badge-gold { background: #fef08a; color: #854d0e; }
+  </style>
+</head>
+<body class="min-h-screen text-slate-800">
+
+  <!-- Top Navbar -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <span class="text-2xl">📖</span>
+        <div>
+          <h1 class="text-lg font-bold text-slate-900 leading-tight">Painel da Igreja</h1>
+          <p class="text-xs text-slate-500 font-medium">Gestão de Devocionais, Gamificação & Prêmios</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-4">
+        <div id="authStatus" class="flex items-center space-x-3">
+          <span class="text-xs bg-emerald-100 text-emerald-800 font-semibold px-2.5 py-1 rounded-full">
+            ● Servidor Conectado
+          </span>
+          <button id="btnSwitchAdmin" onclick="loginDemoAdmin()" class="text-xs bg-church-600 hover:bg-church-700 text-white font-semibold px-3 py-1.5 rounded-lg shadow-sm transition">
+            Entrar como Pastor Davi (Admin)
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="bg-white border-b border-slate-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-8 overflow-x-auto">
+      <button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-btn py-4 text-sm font-semibold border-b-2 border-church-600 text-church-600 whitespace-nowrap">
+        📊 Visão Geral
+      </button>
+      <button onclick="switchTab('audit')" id="tab-audit" class="tab-btn py-4 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 whitespace-nowrap">
+        📸 Auditoria de Folhas Manuscritas
+      </button>
+      <button onclick="switchTab('ranking')" id="tab-ranking" class="tab-btn py-4 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 whitespace-nowrap">
+        🏆 Ranking da Igreja & Grupos
+      </button>
+      <button onclick="switchTab('members')" id="tab-members" class="tab-btn py-4 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 whitespace-nowrap">
+        👥 Membros & Pontos Bônus
+      </button>
+      <button onclick="switchTab('coupons')" id="tab-coupons" class="tab-btn py-4 text-sm font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 whitespace-nowrap">
+        🎟️ Validar QR Code / Cupons
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main Content Container -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <!-- TAB 1: VISÃO GERAL -->
+    <section id="view-dashboard" class="space-y-8">
+      <!-- KPI Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Devocionais Hoje</p>
+          <p id="kpiTodayDevotionals" class="text-3xl font-extrabold text-church-600 mt-2">--</p>
+          <span class="text-xs text-slate-400 mt-1 block">anotações enviadas</span>
+        </div>
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total de Folhas</p>
+          <p id="kpiTotalDevotionals" class="text-3xl font-extrabold text-slate-900 mt-2">--</p>
+          <span class="text-xs text-slate-400 mt-1 block">em todos os estudos</span>
+        </div>
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Membros Ativos</p>
+          <p id="kpiTotalMembers" class="text-3xl font-extrabold text-slate-900 mt-2">--</p>
+          <span class="text-xs text-slate-400 mt-1 block">irmãos cadastrados</span>
+        </div>
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Pontos Gerados</p>
+          <p id="kpiTotalPoints" class="text-3xl font-extrabold text-amber-500 mt-2">--</p>
+          <span class="text-xs text-slate-400 mt-1 block">recompensas da Palavra</span>
+        </div>
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Cupons Resgatados</p>
+          <p id="kpiCoupons" class="text-3xl font-extrabold text-emerald-600 mt-2">--</p>
+          <span class="text-xs text-slate-400 mt-1 block">utilizados nos cultos</span>
+        </div>
+      </div>
+
+      <!-- Grupos & Fogo da Constância -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- Engajamento de Grupos -->
+        <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+          <h2 class="text-base font-bold text-slate-900 mb-4 flex items-center justify-between">
+            <span>📚 Engajamento dos Grupos de Estudo</span>
+            <span class="text-xs text-church-600 font-semibold bg-church-50 px-2.5 py-1 rounded-full">Atualizado em tempo real</span>
+          </h2>
+          <div id="groupStatsContainer" class="space-y-4">
+            <p class="text-sm text-slate-400">Carregando grupos...</p>
+          </div>
+        </div>
+
+        <!-- Top Sequências (Streaks) -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+          <h2 class="text-base font-bold text-slate-900 mb-4 flex items-center space-x-2">
+            <span>🔥 Fogo da Constância (Top Streaks)</span>
+          </h2>
+          <div id="topStreaksContainer" class="space-y-3">
+            <p class="text-sm text-slate-400">Carregando constância...</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: AUDITORIA DE FOLHAS MANUSCRITAS -->
+    <section id="view-audit" class="hidden space-y-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-xl font-bold text-slate-900">Auditoria & Moderação de Fotos</h2>
+          <p class="text-sm text-slate-500">Verifique se as anotações são folhas manuscritas reais do caderno.</p>
+        </div>
+        <button onclick="loadDashboard()" class="text-xs bg-slate-100 hover:bg-slate-200 font-semibold px-3 py-2 rounded-lg text-slate-700">
+          🔄 Atualizar Fotos
+        </button>
+      </div>
+
+      <div id="auditGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <p class="text-sm text-slate-400">Carregando devocionais...</p>
+      </div>
+    </section>
+
+    <!-- TAB 3: RANKING -->
+    <section id="view-ranking" class="hidden space-y-6">
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-xl font-bold text-slate-900">Ranking Geral da Igreja</h2>
+          <p class="text-sm text-slate-500">Reconhecendo a dedicação, o hábito e a fidelidade diária.</p>
+        </div>
+        <div>
+          <select id="rankingGroupSelect" onchange="loadRanking()" class="text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white">
+            <option value="">🏆 Todos os Grupos (Geral)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase text-xs">
+              <tr>
+                <th class="py-3 px-4">Posição</th>
+                <th class="py-3 px-4">Membro</th>
+                <th class="py-3 px-4 text-center">Sequência 🔥</th>
+                <th class="py-3 px-4 text-center">Folhas Enviadas</th>
+                <th class="py-3 px-4 text-right">Pontos Totais</th>
+              </tr>
+            </thead>
+            <tbody id="rankingTableBody" class="divide-y divide-slate-100">
+              <tr><td colspan="5" class="py-4 text-center text-slate-400">Carregando ranking...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: MEMBROS & PONTOS BÔNUS -->
+    <section id="view-members" class="hidden space-y-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-xl font-bold text-slate-900">Membros da Igreja</h2>
+          <p class="text-sm text-slate-500">Atribuição de bônus pastoral por testemunho, liderança e engajamento.</p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase text-xs">
+              <tr>
+                <th class="py-3 px-4">Membro</th>
+                <th class="py-3 px-4">Cargo</th>
+                <th class="py-3 px-4 text-center">Streak Atual</th>
+                <th class="py-3 px-4 text-center">Pontos</th>
+                <th class="py-3 px-4 text-center">Cupons Ganhos</th>
+                <th class="py-3 px-4 text-right">Ação</th>
+              </tr>
+            </thead>
+            <tbody id="membersTableBody" class="divide-y divide-slate-100">
+              <tr><td colspan="6" class="py-4 text-center text-slate-400">Carregando membros...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: VALIDAR QR CODE / CUPONS -->
+    <section id="view-coupons" class="hidden space-y-6">
+      <div class="max-w-xl mx-auto bg-white rounded-2xl border border-slate-200 p-8 shadow-sm text-center">
+        <div class="w-14 h-14 bg-church-50 text-church-600 rounded-full flex items-center justify-center mx-auto text-2xl mb-4">
+          🎟️
+        </div>
+        <h2 class="text-xl font-bold text-slate-900">Validador de Cupons de Culto</h2>
+        <p class="text-sm text-slate-500 mt-1 mb-6">
+          Líder ou balconista: digite o código do cupom que o irmão apresentou no celular (ou leia com a câmera no app móvel).
+        </p>
+
+        <form onsubmit="handleRedeemCoupon(event)" class="space-y-4">
+          <div class="text-left">
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Código do Cupom</label>
+            <input 
+              type="text" 
+              id="couponCodeInput" 
+              placeholder="Ex: CUPOM-OURO-MARIA2026" 
+              class="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-church-500 text-lg uppercase font-mono tracking-wider text-center"
+              required
+            >
+          </div>
+          <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 px-6 rounded-xl shadow-sm transition">
+            ✅ Validar e Dar Baixa no Cupom
+          </button>
+        </form>
+
+        <div id="couponResult" class="mt-6 hidden p-4 rounded-xl text-left border"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Modal Atribuir Bônus -->
+  <div id="bonusModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl">
+      <h3 class="text-lg font-bold text-slate-900 mb-2">🎁 Atribuir Pontos de Bônus</h3>
+      <p id="bonusModalUser" class="text-sm text-slate-500 mb-4">Membro: --</p>
+
+      <form onsubmit="handleAwardBonus(event)" class="space-y-4">
+        <input type="hidden" id="bonusUserId">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Quantidade de Pontos</label>
+          <input type="number" id="bonusAmount" value="100" min="10" step="10" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" required>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Motivo / Reconhecimento</label>
+          <input type="text" id="bonusReason" value="Destaque e fidelidade no devocional da semana" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" required>
+        </div>
+        <div class="flex space-x-3 pt-2">
+          <button type="button" onclick="closeBonusModal()" class="w-1/2 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-sm">
+            Cancelar
+          </button>
+          <button type="submit" class="w-1/2 py-2 bg-church-600 hover:bg-church-700 text-white font-semibold rounded-lg text-sm">
+            Confirmar Bônus
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    let currentAuthToken = localStorage.getItem('church_admin_token') || '';
+    let dashboardData = null;
+
+    // Inicialização
+    document.addEventListener('DOMContentLoaded', async () => {
+      if (!currentAuthToken) {
+        await loginDemoAdmin();
+      } else {
+        loadDashboard();
+      }
+    });
+
+    async function loginDemoAdmin() {
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'admin@igreja.com', password: '123456' }),
+        });
+        const data = await res.json();
+        if (data.token) {
+          currentAuthToken = data.token;
+          localStorage.setItem('church_admin_token', data.token);
+          loadDashboard();
+        }
+      } catch (err) {
+        console.error('Falha no login admin:', err);
+      }
+    }
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('border-church-600', 'text-church-600');
+        btn.classList.add('border-transparent', 'text-slate-500');
+      });
+      document.getElementById(`tab-${tabId}`).classList.remove('border-transparent', 'text-slate-500');
+      document.getElementById(`tab-${tabId}`).classList.add('border-church-600', 'text-church-600');
+
+      document.querySelectorAll('main > section').forEach(sec => sec.classList.add('hidden'));
+      document.getElementById(`view-${tabId}`).classList.remove('hidden');
+
+      if (tabId === 'ranking') loadRanking();
+      if (tabId === 'members') loadMembers();
+      if (tabId === 'audit') loadDashboard();
+    }
+
+    async function loadDashboard() {
+      try {
+        const res = await fetch('/api/admin/stats', {
+          headers: { 'Authorization': `Bearer ${currentAuthToken}` }
+        });
+        if (res.status === 401 || res.status === 403) {
+          await loginDemoAdmin();
+          return;
+        }
+        dashboardData = await res.json();
+        renderDashboard();
+      } catch (err) {
+        console.error('Erro ao carregar dashboard:', err);
+      }
+    }
+
+    function renderDashboard() {
+      if (!dashboardData) return;
+      const { summary, recent_devotionals, top_streaks, group_engagement } = dashboardData;
+
+      document.getElementById('kpiTodayDevotionals').innerText = summary.today_devotionals;
+      document.getElementById('kpiTotalDevotionals').innerText = summary.total_devotionals;
+      document.getElementById('kpiTotalMembers').innerText = summary.total_members;
+      document.getElementById('kpiTotalPoints').innerText = Number(summary.total_points_distributed).toLocaleString('pt-BR');
+      document.getElementById('kpiCoupons').innerText = `${summary.used_coupons} / ${summary.active_coupons + summary.used_coupons}`;
+
+      // Grupos
+      const groupContainer = document.getElementById('groupStatsContainer');
+      groupContainer.innerHTML = group_engagement.map(g => `
+        <div class="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+          <div>
+            <h4 class="font-bold text-slate-800 text-sm">${g.title}</h4>
+            <span class="text-xs text-slate-400">${g.members_count} irmãos participando</span>
+          </div>
+          <div class="text-right">
+            <span class="text-sm font-extrabold text-church-600">${g.devotionals_count}</span>
+            <span class="text-xs text-slate-400 block">folhas anotadas</span>
+          </div>
+        </div>
+      `).join('');
+
+      // Top Streaks
+      const streaksContainer = document.getElementById('topStreaksContainer');
+      streaksContainer.innerHTML = top_streaks.map(s => `
+        <div class="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition border border-transparent hover:border-slate-100">
+          <div class="flex items-center space-x-3">
+            <img src="${s.avatar_url || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150'}" class="w-10 h-10 rounded-full object-cover border border-slate-200">
+            <div>
+              <p class="text-sm font-bold text-slate-800">${s.name}</p>
+              <p class="text-xs text-slate-400">${Number(s.total_points).toLocaleString('pt-BR')} pontos</p>
+            </div>
+          </div>
+          <div class="bg-amber-100 text-amber-800 text-xs font-extrabold px-3 py-1.5 rounded-full flex items-center space-x-1">
+            <span>🔥 ${s.current_streak} dias seguidos</span>
+          </div>
+        </div>
+      `).join('');
+
+      // Auditoria
+      const auditGrid = document.getElementById('auditGrid');
+      auditGrid.innerHTML = recent_devotionals.map(d => `
+        <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm flex flex-col justify-between">
+          <div>
+            <div class="relative bg-slate-900 h-56 flex items-center justify-center overflow-hidden">
+              <img src="${d.image_url}" alt="Folha de Anotação" class="w-full h-full object-cover cursor-pointer hover:scale-105 transition duration-300" onclick="window.open('${d.image_url}', '_blank')">
+              <span class="absolute top-3 left-3 bg-black/60 text-white text-xs px-2.5 py-1 rounded-full backdrop-blur-sm">
+                🔍 Clique para ampliar
+              </span>
+              <span class="absolute bottom-3 right-3 bg-church-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">
+                +${d.points_awarded} pts
+              </span>
+            </div>
+            <div class="p-4 space-y-2">
+              <div class="flex items-center justify-between text-xs text-slate-400">
+                <span class="font-semibold text-church-700">${d.group_title}</span>
+                <span>📅 ${d.devotional_date}</span>
+              </div>
+              <h4 class="font-bold text-slate-900 text-base">${d.user_name}</h4>
+              <p class="text-xs font-semibold text-slate-600">📖 ${d.passage_or_chapter || 'Anotações Bíblicas'}</p>
+              <p class="text-xs text-slate-500 italic line-clamp-3 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                "${d.notes || 'Anotação da folha manuscrita registrada no caderno.'}"
+              </p>
+            </div>
+          </div>
+          <div class="p-4 pt-0 border-t border-slate-100 mt-3 flex items-center justify-between">
+            <span class="text-xs text-emerald-600 font-semibold">✅ Verificada</span>
+            <button onclick="handleDeleteDevotional('${d.id}')" class="text-xs text-rose-600 hover:text-rose-800 font-semibold hover:underline">
+              Remover post
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function loadRanking() {
+      try {
+        const select = document.getElementById('rankingGroupSelect');
+        const groupId = select.value;
+        const url = groupId ? `/api/gamification/ranking?groupId=${groupId}` : '/api/gamification/ranking';
+
+        const res = await fetch(url, {
+          headers: { 'Authorization': `Bearer ${currentAuthToken}` }
+        });
+        const list = await res.json();
+
+        const tbody = document.getElementById('rankingTableBody');
+        tbody.innerHTML = list.map(item => `
+          <tr class="hover:bg-slate-50 transition ${item.position <= 3 ? 'bg-amber-50/40 font-semibold' : ''}">
+            <td class="py-3 px-4 font-bold text-center w-16">
+              ${item.badge ? `${item.badge} ` : ''}#${item.position}
+            </td>
+            <td class="py-3 px-4">
+              <div class="flex items-center space-x-3">
+                <img src="${item.avatar_url || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150'}" class="w-9 h-9 rounded-full object-cover border border-slate-200">
+                <div>
+                  <p class="text-slate-900">${item.name}</p>
+                  <span class="text-xs text-slate-400 capitalize">${item.role === 'admin' ? 'Pastor / Admin' : item.role === 'leader' ? 'Líder' : 'Membro'}</span>
+                </div>
+              </div>
+            </td>
+            <td class="py-3 px-4 text-center">
+              <span class="bg-orange-100 text-orange-800 text-xs font-bold px-2.5 py-1 rounded-full">
+                🔥 ${item.current_streak} dias
+              </span>
+            </td>
+            <td class="py-3 px-4 text-center text-slate-600">${item.devotionals_count}</td>
+            <td class="py-3 px-4 text-right font-extrabold text-church-600 text-base">
+              ${Number(item.total_points).toLocaleString('pt-BR')} pts
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        console.error('Erro ao carregar ranking:', err);
+      }
+    }
+
+    async function loadMembers() {
+      try {
+        const res = await fetch('/api/admin/members', {
+          headers: { 'Authorization': `Bearer ${currentAuthToken}` }
+        });
+        const members = await res.json();
+
+        const tbody = document.getElementById('membersTableBody');
+        tbody.innerHTML = members.map(m => `
+          <tr class="hover:bg-slate-50 transition">
+            <td class="py-3 px-4">
+              <p class="font-bold text-slate-900">${m.name}</p>
+              <p class="text-xs text-slate-400">${m.email}</p>
+            </td>
+            <td class="py-3 px-4">
+              <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${m.role === 'admin' ? 'bg-purple-100 text-purple-800' : m.role === 'leader' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-700'}">
+                ${m.role}
+              </span>
+            </td>
+            <td class="py-3 px-4 text-center font-bold text-amber-600">🔥 ${m.current_streak}d</td>
+            <td class="py-3 px-4 text-center font-extrabold text-slate-900">${Number(m.total_points).toLocaleString('pt-BR')} pts</td>
+            <td class="py-3 px-4 text-center text-slate-500">${m.coupons_count}</td>
+            <td class="py-3 px-4 text-right">
+              <button onclick="openBonusModal('${m.id}', '${m.name}')" class="text-xs bg-amber-500 hover:bg-amber-600 text-white font-bold px-3 py-1.5 rounded-lg shadow-sm">
+                + Atribuir Bônus
+              </button>
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        console.error('Erro ao carregar membros:', err);
+      }
+    }
+
+    function openBonusModal(userId, userName) {
+      document.getElementById('bonusUserId').value = userId;
+      document.getElementById('bonusModalUser').innerText = `Membro selecionado: ${userName}`;
+      document.getElementById('bonusModal').classList.remove('hidden');
+    }
+
+    function closeBonusModal() {
+      document.getElementById('bonusModal').classList.add('hidden');
+    }
+
+    async function handleAwardBonus(e) {
+      e.preventDefault();
+      const userId = document.getElementById('bonusUserId').value;
+      const amount = Number(document.getElementById('bonusAmount').value);
+      const reason = document.getElementById('bonusReason').value;
+
+      try {
+        const res = await fetch('/api/admin/bonus', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentAuthToken}`,
+          },
+          body: JSON.stringify({ userId, amount, reason })
+        });
+        const result = await res.json();
+        if (res.ok) {
+          alert(result.message);
+          closeBonusModal();
+          loadMembers();
+          loadDashboard();
+        } else {
+          alert(result.error);
+        }
+      } catch (err) {
+        alert('Erro ao atribuir bônus.');
+      }
+    }
+
+    async function handleDeleteDevotional(id) {
+      if (!confirm('Deseja realmente remover esta publicação de devocional?')) return;
+      try {
+        const res = await fetch(`/api/admin/devotionals/${id}?deductPoints=true`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${currentAuthToken}` }
+        });
+        if (res.ok) {
+          alert('Devocional removido com sucesso!');
+          loadDashboard();
+        }
+      } catch (err) {
+        alert('Erro ao excluir devocional.');
+      }
+    }
+
+    async function handleRedeemCoupon(e) {
+      e.preventDefault();
+      const code = document.getElementById('couponCodeInput').value;
+      const resultBox = document.getElementById('couponResult');
+
+      try {
+        const res = await fetch('/api/gamification/redeem', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentAuthToken}`,
+          },
+          body: JSON.stringify({ couponCode: code })
+        });
+        const data = await res.json();
+
+        resultBox.classList.remove('hidden');
+        if (res.ok) {
+          resultBox.className = 'mt-6 p-4 rounded-xl text-left border bg-emerald-50 border-emerald-200 text-emerald-900';
+          resultBox.innerHTML = `
+            <div class="flex items-center space-x-2 text-emerald-700 font-bold mb-1">
+              <span>✅</span> <span>CUPOM RESGATADO COM SUCESSO!</span>
+            </div>
+            <p class="text-sm font-semibold">${data.coupon.reward_title}</p>
+            <p class="text-xs text-emerald-700 mt-1">Membro: <strong>${data.coupon.member_name}</strong> (${data.coupon.member_email})</p>
+            <p class="text-xs text-emerald-700">Parceiro / Local: <strong>${data.coupon.partner_name}</strong></p>
+            <p class="text-xs text-slate-400 mt-2">Data da baixa: ${new Date().toLocaleString('pt-BR')}</p>
+          `;
+          loadDashboard();
+        } else {
+          resultBox.className = 'mt-6 p-4 rounded-xl text-left border bg-rose-50 border-rose-200 text-rose-900';
+          resultBox.innerHTML = `
+            <div class="flex items-center space-x-2 text-rose-700 font-bold mb-1">
+              <span>⚠️</span> <span>NÃO FOI POSSÍVEL RESGATAR</span>
+            </div>
+            <p class="text-sm">${data.error}</p>
+          `;
+        }
+      } catch (err) {
+        alert('Erro ao validar cupom.');
+      }
+    }
+  </script>
+</body>
+</html>
