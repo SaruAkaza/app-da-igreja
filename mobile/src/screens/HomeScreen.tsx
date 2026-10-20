@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   Image,
+  Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors, Spacing, Typography } from '../theme/colors';
@@ -15,17 +16,37 @@ import { useAuth } from '../context/AuthContext';
 import { HeaderStreakBanner } from '../components/HeaderStreakBanner';
 import { AccessibleButton } from '../components/AccessibleButton';
 import { api, Group } from '../services/api';
+import { HomeMenuDrawer } from '../components/HomeMenuDrawer';
+import { AccountSwitcherModal } from '../components/AccountSwitcherModal';
+import { ProfileCompletionModal } from '../components/ProfileCompletionModal';
 
 export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { user, refreshProfile, logout } = useAuth();
   const [groups, setGroups] = useState<Group[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Status de Batalha de Células (Condicional)
+  const [hasActiveBattle, setHasActiveBattle] = useState(false);
+  const [battleTitle, setBattleTitle] = useState('Batalha de Células');
+
+  // Modais
+  const [menuDrawerVisible, setMenuDrawerVisible] = useState(false);
+  const [accountSwitcherVisible, setAccountSwitcherVisible] = useState(false);
+  const [profileCompletionVisible, setProfileCompletionVisible] = useState(false);
+
   const loadData = async () => {
     try {
       await refreshProfile();
-      const res = await api.get('/api/groups/my');
-      setGroups(res.data);
+      const [groupsRes, battleRes] = await Promise.all([
+        api.get('/api/groups/my').catch(() => ({ data: [] })),
+        api.get('/api/auth/battle-status').catch(() => ({ data: { has_active_battle: false } })),
+      ]);
+
+      setGroups(groupsRes.data || []);
+      setHasActiveBattle(Boolean(battleRes.data?.has_active_battle));
+      if (battleRes.data?.battle_title) {
+        setBattleTitle(battleRes.data.battle_title);
+      }
     } catch (e) {
       console.error('Erro ao carregar dados da Home:', e);
     }
@@ -44,10 +65,18 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   };
 
   const todayCompleted = user?.completed_today;
+  const percent = user?.profile_completion_percent || 0;
+  const is100Percent = percent >= 100;
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <HeaderStreakBanner user={user} />
+      {/* Banner Superior com Trocar Usuário no canto esquerdo, Três Barrinhas abaixo da foto e Igreja ao lado do nome */}
+      <HeaderStreakBanner
+        user={user}
+        onOpenAccountSwitcher={() => setAccountSwitcherVisible(true)}
+        onOpenMenuDrawer={() => setMenuDrawerVisible(true)}
+        onPressChurchBadge={() => setMenuDrawerVisible(true)}
+      />
 
       <ScrollView
         contentContainerStyle={styles.scrollContainer}
@@ -55,14 +84,49 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
         }
       >
-        {/* Identificação da Igreja */}
-        <View style={styles.churchBadgeCard}>
-          <Text style={styles.churchEmoji}>⛪</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.churchName}>{user?.church_name || 'Igreja Parceira'}</Text>
-            <Text style={styles.churchCode}>Código da congregação: {user?.church_code}</Text>
-          </View>
-        </View>
+        {/* Caso o usuário ainda não tenha igreja vinculada */}
+        {!user?.church_id ? (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => setMenuDrawerVisible(true)}
+            style={styles.unboundChurchCard}
+          >
+            <Text style={styles.unboundChurchEmoji}>⛪</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.unboundChurchTitle}>Vincule-se à sua Igreja</Text>
+              <Text style={styles.unboundChurchSub}>
+                Toque aqui para digitar o código de convite (ex: VIDEIRA26) ou código da sua célula.
+              </Text>
+            </View>
+            <Text style={styles.unboundChurchArrow}>Inserir ›</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {/* Card Interativo: Progresso do Perfil (0 a 100% com Bônus de +100 Pontos) */}
+        {!is100Percent ? (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => setProfileCompletionVisible(true)}
+            style={styles.profileBonusCard}
+          >
+            <View style={styles.profileBonusTop}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.profileBonusBadge}>🎁 BÔNUS DE CADASTRO DISPONÍVEL</Text>
+                <Text style={styles.profileBonusTitle}>
+                  Seu perfil está {percent}% completo
+                </Text>
+                <Text style={styles.profileBonusSub}>
+                  Complete os dados pendentes para ganhar +100 pontos de bônus imediato!
+                </Text>
+              </View>
+              <Text style={styles.profileBonusPercent}>{percent}%</Text>
+            </View>
+
+            <View style={styles.profileTrack}>
+              <View style={[styles.profileFill, { width: `${percent}%` }]} />
+            </View>
+          </TouchableOpacity>
+        ) : null}
 
         {/* Card Alerta de Orientação Pastoral / Discipulado */}
         {user?.feedbacks_count && user.feedbacks_count > 0 ? (
@@ -94,8 +158,8 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
               </Text>
               <Text style={styles.actionSubtitle}>
                 {todayCompleted
-                  ? 'Glória a Deus! Sua anotação foi enviada em sigilo ao líder e sua chama continua acesa.'
-                  : 'Abra sua Bíblia ou livro de estudo, anote suas reflexões no caderno e fotografe a folha.'}
+                  ? 'Glória a Deus! Sua anotação foi entregue ao líder em sigilo.'
+                  : 'Abra sua Bíblia, anote suas reflexões no caderno e fotografe a folha.'}
               </Text>
             </View>
           </View>
@@ -103,7 +167,7 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
           {todayCompleted ? (
             <AccessibleButton
               title="👥 Ver o Feed dos Irmãos"
-              subtitle="Veja quem cumpriu a leitura hoje na igreja"
+              subtitle="Veja quem cumpriu a leitura hoje na congregação"
               variant="outline"
               onPress={() => navigation.navigate('Feed')}
               style={styles.actionBtn}
@@ -119,17 +183,39 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
           )}
         </View>
 
-        {/* Atalhos: Batalha de Células & Prêmios */}
+        {/* Atalhos: Batalha de Células (Habilitada Condicionalmente) & Meus Prêmios */}
         <View style={styles.shortcutsRow}>
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => navigation.navigate('GroupsRanking')}
-            style={styles.shortcutBox}
-          >
-            <Text style={styles.shortcutIcon}>🏆</Text>
-            <Text style={styles.shortcutTitle}>Batalha de Células</Text>
-            <Text style={styles.shortcutSub}>Ranking dos grupos</Text>
-          </TouchableOpacity>
+          {hasActiveBattle ? (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate('GroupsRanking')}
+              style={[styles.shortcutBox, styles.shortcutBoxActive]}
+            >
+              <Text style={styles.shortcutIcon}>⚔️</Text>
+              <View style={styles.shortcutTitleRow}>
+                <Text style={styles.shortcutTitle}>Batalha de Células</Text>
+                <View style={styles.activePill}>
+                  <Text style={styles.activePillText}>Ativa</Text>
+                </View>
+              </View>
+              <Text style={styles.shortcutSub}>Ranking e gincana dos grupos</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() =>
+                Alert.alert(
+                  'Batalha de Células',
+                  'Esta função é ativada quando sua célula for inscrita em uma gincana bíblica ou quando você entrar em um grupo participante.\n\nToque em "Explorar Grupos" para participar de uma célula!'
+                )
+              }
+              style={[styles.shortcutBox, styles.shortcutBoxDisabled]}
+            >
+              <Text style={styles.shortcutIcon}>🔒</Text>
+              <Text style={[styles.shortcutTitle, { color: Colors.textMuted }]}>Batalha de Células</Text>
+              <Text style={styles.shortcutSub}>Entrar em grupo participante</Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             activeOpacity={0.85}
@@ -153,7 +239,7 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
         {groups.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyIcon}>📚</Text>
-            <Text style={styles.emptyText}>Você ainda não está em nenhum grupo.</Text>
+            <Text style={styles.emptyText}>Você ainda não está em nenhum grupo de estudo.</Text>
             <AccessibleButton
               title="Entrar em um Grupo de Estudo"
               onPress={() => navigation.navigate('Explore')}
@@ -180,36 +266,49 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
                     </View>
                   )}
                 </View>
+
                 <Text style={styles.groupTitle} numberOfLines={1}>
                   {group.title}
                 </Text>
                 <Text style={styles.groupTheme} numberOfLines={1}>
-                  Líder Discipulador: {group.leader_name || 'Pastor'}
+                  Tema: {group.book_or_theme}
                 </Text>
+
                 <View style={styles.groupFooter}>
-                  <Text style={styles.groupStats}>
-                    👥 {group.member_count} irmãos • 📝 {group.devotional_count} folhas
+                  <Text style={styles.groupMembers}>👥 {group.member_count || 1} membros</Text>
+                  <Text style={styles.groupLeader} numberOfLines={1}>
+                    Líder: {group.leader_name || 'Discipulador'}
                   </Text>
-                  <Text style={styles.groupOpenText}>Ver Feed ›</Text>
                 </View>
               </View>
             </TouchableOpacity>
           ))
         )}
-
-        {/* Versículo Inspirador */}
-        <View style={styles.verseCard}>
-          <Text style={styles.verseText}>
-            "Lâmpada para os meus pés é tua palavra e luz, para o meu caminho."
-          </Text>
-          <Text style={styles.verseRef}>Salmos 119:105</Text>
-        </View>
-
-        {/* Botão de Logout */}
-        <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
-          <Text style={styles.logoutBtnText}>Encerrar Sessão / Trocar de Usuário</Text>
-        </TouchableOpacity>
       </ScrollView>
+
+      {/* Drawer Lateral Acionado pelas 3 Barrinhas */}
+      <HomeMenuDrawer
+        visible={menuDrawerVisible}
+        onClose={() => setMenuDrawerVisible(false)}
+        navigation={navigation}
+        hasActiveBattle={hasActiveBattle}
+        battleTitle={battleTitle}
+        onOpenAccountSwitcher={() => setAccountSwitcherVisible(true)}
+        onOpenProfileCompletion={() => setProfileCompletionVisible(true)}
+      />
+
+      {/* Modal de Alternância Rápida de Contas Familiares */}
+      <AccountSwitcherModal
+        visible={accountSwitcherVisible}
+        onClose={() => setAccountSwitcherVisible(false)}
+        onAddAccount={() => logout()}
+      />
+
+      {/* Modal de Completar Perfil e Resgatar Bônus de 100 Pontos */}
+      <ProfileCompletionModal
+        visible={profileCompletionVisible}
+        onClose={() => setProfileCompletionVisible(false)}
+      />
     </SafeAreaView>
   );
 };
@@ -221,82 +320,136 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     padding: Spacing.md,
+    paddingBottom: Spacing.xl,
   },
-  churchBadgeCard: {
+  unboundChurchCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
-    padding: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    marginBottom: Spacing.sm,
+    backgroundColor: '#eff6ff',
+    borderWidth: 1.5,
+    borderColor: '#93c5fd',
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: Spacing.md,
   },
-  churchEmoji: {
-    fontSize: 24,
+  unboundChurchEmoji: {
+    fontSize: 26,
     marginRight: 10,
   },
-  churchName: {
-    fontSize: Typography.bodyLarge,
+  unboundChurchTitle: {
+    fontSize: Typography.bodyMedium,
     fontWeight: '800',
-    color: Colors.textPrimary,
-  },
-  churchCode: {
-    fontSize: 11,
-    fontWeight: '700',
     color: Colors.primaryDark,
+  },
+  unboundChurchSub: {
+    fontSize: Typography.caption,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  unboundChurchArrow: {
+    color: Colors.primary,
+    fontWeight: '800',
+    fontSize: Typography.bodySmall,
+    marginLeft: 6,
+  },
+  profileBonusCard: {
+    backgroundColor: '#fffbeb',
+    borderWidth: 1.5,
+    borderColor: '#fde68a',
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: Spacing.md,
+  },
+  profileBonusTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  profileBonusBadge: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#b45309',
+    letterSpacing: 0.5,
+  },
+  profileBonusTitle: {
+    fontSize: Typography.bodyMedium,
+    fontWeight: '800',
+    color: '#78350f',
+    marginTop: 2,
+  },
+  profileBonusSub: {
+    fontSize: Typography.caption,
+    color: '#92400e',
+    marginTop: 2,
+  },
+  profileBonusPercent: {
+    fontSize: Typography.titleLarge,
+    fontWeight: '900',
+    color: '#b45309',
+    marginLeft: 10,
+  },
+  profileTrack: {
+    height: 6,
+    backgroundColor: '#fef3c7',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  profileFill: {
+    height: '100%',
+    backgroundColor: '#d97706',
   },
   pastoralAlertCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.successSurface,
+    backgroundColor: '#fdf4ff',
     borderWidth: 1.5,
-    borderColor: '#86efac',
+    borderColor: '#f0abfc',
     borderRadius: 18,
-    padding: Spacing.md,
+    padding: 14,
     marginBottom: Spacing.md,
   },
   pastoralAlertEmoji: {
-    fontSize: 28,
-    marginRight: 12,
+    fontSize: 26,
+    marginRight: 10,
   },
   pastoralAlertTitle: {
     fontSize: Typography.bodyMedium,
     fontWeight: '800',
-    color: '#14532d',
+    color: '#86198f',
   },
   pastoralAlertSub: {
-    fontSize: Typography.bodySmall,
-    color: Colors.success,
+    fontSize: Typography.caption,
+    color: '#a21caf',
     marginTop: 2,
   },
   pastoralAlertArrow: {
-    fontSize: Typography.titleMedium,
-    fontWeight: '900',
-    color: Colors.success,
+    color: '#a21caf',
+    fontWeight: '800',
+    fontSize: Typography.bodySmall,
     marginLeft: 6,
   },
   actionCard: {
-    borderRadius: 24,
+    backgroundColor: Colors.surface,
+    borderRadius: 22,
     padding: Spacing.lg,
     marginBottom: Spacing.md,
-    borderWidth: 2,
-    elevation: 3,
+    borderWidth: 1.5,
   },
   actionCardPending: {
-    backgroundColor: '#f0fdf4',
-    borderColor: '#86efac',
+    borderColor: Colors.border,
   },
   actionCardDone: {
-    backgroundColor: '#eff6ff',
-    borderColor: '#bfdbfe',
+    borderColor: Colors.success,
+    backgroundColor: '#f0fdf4',
   },
   actionHeader: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     marginBottom: Spacing.md,
   },
   actionIcon: {
-    fontSize: 36,
+    fontSize: 32,
     marginRight: 12,
   },
   actionHeaderText: {
@@ -311,36 +464,60 @@ const styles = StyleSheet.create({
     fontSize: Typography.bodySmall,
     color: Colors.textSecondary,
     marginTop: 4,
-    lineHeight: 20,
+    lineHeight: 18,
   },
   actionBtn: {
-    minHeight: 60,
+    width: '100%',
   },
   shortcutsRow: {
     flexDirection: 'row',
-    gap: Spacing.sm,
+    justifyContent: 'space-between',
     marginBottom: Spacing.lg,
+    gap: 12,
   },
   shortcutBox: {
     flex: 1,
     backgroundColor: Colors.surface,
-    padding: Spacing.md,
     borderRadius: 18,
-    borderWidth: 1.5,
+    padding: Spacing.md,
+    borderWidth: 1,
     borderColor: Colors.border,
-    alignItems: 'center',
+  },
+  shortcutBoxActive: {
+    borderColor: Colors.primaryLight,
+    backgroundColor: '#faf5ff',
+  },
+  shortcutBoxDisabled: {
+    backgroundColor: '#f8fafc',
+    opacity: 0.8,
   },
   shortcutIcon: {
-    fontSize: 28,
-    marginBottom: 4,
+    fontSize: 26,
+    marginBottom: 6,
+  },
+  shortcutTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   shortcutTitle: {
     fontSize: Typography.bodyMedium,
     fontWeight: '800',
     color: Colors.textPrimary,
   },
+  activePill: {
+    backgroundColor: Colors.success,
+    borderRadius: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    marginLeft: 4,
+  },
+  activePillText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontWeight: '800',
+  },
   shortcutSub: {
-    fontSize: Typography.bodySmall,
+    fontSize: Typography.caption,
     color: Colors.textSecondary,
     marginTop: 2,
   },
@@ -357,13 +534,13 @@ const styles = StyleSheet.create({
   },
   sectionLink: {
     fontSize: Typography.bodySmall,
-    fontWeight: '700',
     color: Colors.primary,
+    fontWeight: '700',
   },
   emptyCard: {
     backgroundColor: Colors.surface,
-    padding: Spacing.lg,
     borderRadius: 20,
+    padding: Spacing.xl,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Colors.border,
@@ -378,105 +555,67 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   groupCard: {
+    flexDirection: 'row',
     backgroundColor: Colors.surface,
-    borderRadius: 20,
-    marginBottom: Spacing.md,
+    borderRadius: 18,
+    overflow: 'hidden',
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: Colors.border,
-    overflow: 'hidden',
-    elevation: 2,
   },
   groupCover: {
-    width: '100%',
-    height: 120,
+    width: 90,
+    height: 100,
   },
   groupContent: {
-    padding: Spacing.md,
+    flex: 1,
+    padding: 12,
+    justifyContent: 'space-between',
   },
   groupTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
   },
   groupCategory: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
     color: Colors.primary,
   },
   postedBadge: {
-    backgroundColor: Colors.successSurface,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#86efac',
+    backgroundColor: '#dcfce7',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
   },
   postedBadgeText: {
-    fontSize: 10,
+    fontSize: 9,
+    color: '#15803d',
     fontWeight: '800',
-    color: Colors.success,
   },
   groupTitle: {
-    fontSize: Typography.titleMedium,
+    fontSize: Typography.bodyMedium,
     fontWeight: '800',
     color: Colors.textPrimary,
   },
   groupTheme: {
-    fontSize: Typography.bodySmall,
+    fontSize: Typography.caption,
     color: Colors.textSecondary,
-    marginTop: 2,
-    marginBottom: Spacing.sm,
   },
   groupFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    paddingTop: 8,
+    marginTop: 4,
   },
-  groupStats: {
-    fontSize: Typography.bodySmall,
+  groupMembers: {
+    fontSize: 10,
     color: Colors.textMuted,
   },
-  groupOpenText: {
-    fontSize: Typography.bodySmall,
-    fontWeight: '700',
-    color: Colors.primary,
-  },
-  verseCard: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: Spacing.md,
-    alignItems: 'center',
-    marginTop: Spacing.md,
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.primary,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  verseText: {
-    fontSize: Typography.bodyMedium,
-    fontStyle: 'italic',
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  verseRef: {
-    fontSize: Typography.bodySmall,
-    fontWeight: '800',
-    color: Colors.primary,
-    marginTop: 6,
-  },
-  logoutBtn: {
-    marginVertical: Spacing.xl,
-    alignItems: 'center',
-    padding: Spacing.md,
-  },
-  logoutBtnText: {
-    fontSize: Typography.bodySmall,
-    color: Colors.textMuted,
+  groupLeader: {
+    fontSize: 10,
+    color: Colors.primaryDark,
     fontWeight: '600',
+    maxWidth: 120,
   },
 });

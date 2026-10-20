@@ -1,6 +1,14 @@
 import React from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Text, Platform } from 'react-native';
+
+// Evitar congelamento de DevTools no navegador por modal nativo síncrono
+if (Platform.OS === 'web' && typeof window !== 'undefined') {
+  window.alert = (msg: string) => {
+    console.log('🔔 [Alerta do App]:', msg);
+  };
+}
+
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -57,7 +65,7 @@ function MainTabs() {
         name="Feed"
         component={GroupFeedScreen}
         options={{
-          tabBarLabel: 'Mural',
+          tabBarLabel: 'Feed',
           tabBarIcon: () => <Text style={{ fontSize: 20 }}>👥</Text>,
         }}
       />

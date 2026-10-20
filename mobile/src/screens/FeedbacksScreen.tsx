@@ -11,8 +11,9 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors, Spacing, Typography } from '../theme/colors';
 import { api, LeaderFeedback } from '../services/api';
+import { ScreenHeader } from '../components/ScreenHeader';
 
-export const FeedbacksScreen: React.FC = () => {
+export const FeedbacksScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [feedbacks, setFeedbacks] = useState<LeaderFeedback[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -42,6 +43,12 @@ export const FeedbacksScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <ScreenHeader
+        title="Dicas do Meu Líder"
+        subtitle="Discipulado pastoral sigiloso"
+        navigation={navigation}
+        showHomeButton={true}
+      />
       <ScrollView
         contentContainerStyle={styles.container}
         refreshControl={

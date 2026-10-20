@@ -40,16 +40,30 @@ export const formatImageUrl = (path: string | undefined): string => {
 
 export interface User {
   id: string;
-  church_id: string;
-  church_name?: string;
-  church_code?: string;
+  church_id: string | null;
+  church_name?: string | null;
+  church_code?: string | null;
+  church_logo?: string | null;
   name: string;
+  last_name?: string | null;
+  username_handle?: string | null;
   email: string;
   role: 'member' | 'leader' | 'church_admin' | 'super_admin';
   current_streak: number;
   highest_streak: number;
   total_points: number;
   avatar_url?: string;
+  age?: number | null;
+  parent_phone?: string | null;
+  parent_consent_verified?: number | boolean;
+  address_street?: string | null;
+  address_neighborhood?: string | null;
+  address_city?: string | null;
+  address_state?: string | null;
+  address_zipcode?: string | null;
+  profile_completion_percent?: number;
+  profile_bonus_awarded?: boolean;
+  missing_profile_fields?: string[];
   completed_today?: boolean;
   feedbacks_count?: number;
 }

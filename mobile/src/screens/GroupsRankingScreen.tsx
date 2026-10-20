@@ -12,8 +12,9 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors, Spacing, Typography } from '../theme/colors';
 import { api, GroupRanking, ActiveChallenge } from '../services/api';
+import { ScreenHeader } from '../components/ScreenHeader';
 
-export const GroupsRankingScreen: React.FC = () => {
+export const GroupsRankingScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [groups, setGroups] = useState<GroupRanking[]>([]);
   const [challengeData, setChallengeData] = useState<ActiveChallenge | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -45,6 +46,12 @@ export const GroupsRankingScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <ScreenHeader
+        title="Batalha de Células"
+        subtitle="Competição saudável e constância"
+        navigation={navigation}
+        showHomeButton={true}
+      />
       <ScrollView
         contentContainerStyle={styles.container}
         refreshControl={

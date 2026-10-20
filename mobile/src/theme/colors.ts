@@ -20,6 +20,7 @@ export const Colors = {
   background: '#f8fafc',
   surface: '#ffffff',
   surfaceAlt: '#f1f5f9',
+  surfaceSecondary: '#f1f5f9',
 
   textPrimary: '#0f172a',
   textSecondary: '#475569',
@@ -28,6 +29,9 @@ export const Colors = {
 
   border: '#e2e8f0',
   borderStrong: '#cbd5e1',
+
+  warning: '#d97706',
+  warningDark: '#b45309',
 
   tierBronze: '#b45309',
   tierBronzeBg: '#fef3c7',
@@ -45,6 +49,8 @@ export const Typography = {
   bodyLarge: 17,
   bodyMedium: 15,
   bodySmall: 13,
+  caption: 12,
+  labelSmall: 11,
   buttonText: 18,
 };
 

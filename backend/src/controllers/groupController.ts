@@ -112,19 +112,30 @@ export const getGroupDetails = (req: Request, res: Response) => {
 export const joinGroup = (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
-    const churchId = req.user?.church_id;
+    let churchId = req.user?.church_id;
     const { groupId, inviteCode } = req.body;
 
     let targetGroup: any;
 
     if (inviteCode) {
-      targetGroup = db.prepare('SELECT * FROM groups WHERE UPPER(invite_code) = UPPER(?) AND church_id = ?').get(inviteCode.trim(), churchId);
+      if (churchId) {
+        targetGroup = db.prepare('SELECT * FROM groups WHERE UPPER(invite_code) = UPPER(?) AND church_id = ?').get(inviteCode.trim(), churchId);
+      }
+      if (!targetGroup) {
+        targetGroup = db.prepare('SELECT * FROM groups WHERE UPPER(invite_code) = UPPER(?)').get(inviteCode.trim());
+      }
     } else if (groupId) {
-      targetGroup = db.prepare('SELECT * FROM groups WHERE id = ? AND church_id = ?').get(groupId, churchId);
+      targetGroup = db.prepare('SELECT * FROM groups WHERE id = ?').get(groupId);
     }
 
     if (!targetGroup) {
-      return res.status(404).json({ error: 'Grupo não encontrado com o código fornecido para a sua igreja.' });
+      return res.status(404).json({ error: 'Grupo não encontrado com o código fornecido.' });
+    }
+
+    // Se o usuário ainda não tiver igreja vinculada, vincula à igreja deste grupo
+    if (!churchId || churchId !== targetGroup.church_id) {
+      db.prepare('UPDATE users SET church_id = ? WHERE id = ?').run(targetGroup.church_id, userId);
+      churchId = targetGroup.church_id;
     }
 
     const existing = db.prepare('SELECT id FROM group_members WHERE group_id = ? AND user_id = ?').get(targetGroup.id, userId);

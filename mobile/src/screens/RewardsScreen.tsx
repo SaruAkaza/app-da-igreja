@@ -13,6 +13,7 @@ import { Colors, Spacing, Typography } from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
 import { CouponCard } from '../components/CouponCard';
 import { api, Reward, Coupon } from '../services/api';
+import { ScreenHeader } from '../components/ScreenHeader';
 
 export const RewardsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const { user, refreshProfile } = useAuth();
@@ -57,6 +58,12 @@ export const RewardsScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <ScreenHeader
+        title="Meus Prêmios"
+        subtitle={`${userPoints.toLocaleString('pt-BR')} pontos acumulados`}
+        navigation={navigation}
+        showHomeButton={true}
+      />
       <ScrollView
         contentContainerStyle={styles.container}
         refreshControl={

@@ -17,8 +17,9 @@ import { Colors, Spacing, Typography } from '../theme/colors';
 import { AccessibleButton } from '../components/AccessibleButton';
 import { api, formatImageUrl } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { ScreenHeader } from '../components/ScreenHeader';
 
-export const LeaderScannerScreen: React.FC = () => {
+export const LeaderScannerScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'redeem' | 'discipleship'>('discipleship');
 
@@ -119,6 +120,12 @@ export const LeaderScannerScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <ScreenHeader
+        title="Central do Líder"
+        subtitle="Discipulado e Validação de Prêmios"
+        navigation={navigation}
+        showHomeButton={true}
+      />
       <ScrollView
         contentContainerStyle={styles.container}
         refreshControl={

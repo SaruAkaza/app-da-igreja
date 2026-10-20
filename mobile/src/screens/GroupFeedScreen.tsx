@@ -14,6 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Colors, Spacing, Typography } from '../theme/colors';
 import { DevotionalCard } from '../components/DevotionalCard';
 import { api, Devotional, Group } from '../services/api';
+import { ScreenHeader } from '../components/ScreenHeader';
 
 export const GroupFeedScreen: React.FC<{ navigation: any; route: any }> = ({
   navigation,
@@ -42,12 +43,15 @@ export const GroupFeedScreen: React.FC<{ navigation: any; route: any }> = ({
       const res = await api.get(url);
       setFeed(res.data);
 
-      // Carregar quem já fez hoje para o grupo selecionado
+      // Carregar estritamente quem já fez hoje para o grupo selecionado
       if (groupId) {
         const groupDetailsRes = await api.get(`/api/groups/${groupId}`);
-        setActiveMembersToday(groupDetailsRes.data.members || []);
+        const allMembers = groupDetailsRes.data.members || [];
+        // Filtrar estritamente apenas os membros que concluíram devocional HOJE
+        const completedToday = allMembers.filter((m: any) => Boolean(m.did_devotional_today));
+        setActiveMembersToday(completedToday);
       } else {
-        // Geral: buscar ranking ou membros do feed de hoje
+        // Geral: buscar irmãos com post na data de hoje
         const today = new Date().toISOString().slice(0, 10);
         const todayPosts = res.data.filter((p: Devotional) => p.devotional_date === today);
         const uniqueUsers = Array.from(
@@ -83,6 +87,13 @@ export const GroupFeedScreen: React.FC<{ navigation: any; route: any }> = ({
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <ScreenHeader
+        title="Feed da Igreja"
+        subtitle="Celebração da fidelidade na Palavra"
+        navigation={navigation}
+        showHomeButton={true}
+      />
+
       {/* Barra de Filtros de Grupos */}
       <View style={styles.filterBar}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>

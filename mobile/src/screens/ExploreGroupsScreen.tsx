@@ -14,6 +14,7 @@ import {
 import { Colors, Spacing, Typography } from '../theme/colors';
 import { AccessibleButton } from '../components/AccessibleButton';
 import { api, Group } from '../services/api';
+import { ScreenHeader } from '../components/ScreenHeader';
 
 export const ExploreGroupsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const [groups, setGroups] = useState<Group[]>([]);
@@ -72,6 +73,12 @@ export const ExploreGroupsScreen: React.FC<{ navigation: any }> = ({ navigation 
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <ScreenHeader
+        title="Explorar Grupos"
+        subtitle="Participe de células de estudo bíblico"
+        navigation={navigation}
+        showHomeButton={true}
+      />
       <ScrollView
         contentContainerStyle={styles.container}
         refreshControl={
