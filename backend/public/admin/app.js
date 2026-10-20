@@ -1272,7 +1272,6 @@ $('modal').addEventListener('cancel', event => { event.preventDefault(); closeMo
 
 fetch('/api/health').then(r => r.json()).then(d => $('demo').hidden = !d.demo_mode).catch(() => {});
 if (token) restore().catch(error => {
-  logout();
   $('loginError').textContent = error.message || 'Reconecte-se ao servidor.';
   $('loginError').hidden = false;
 });

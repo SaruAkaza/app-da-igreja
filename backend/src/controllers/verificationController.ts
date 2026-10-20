@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import nodemailer from 'nodemailer';
 import { db } from '../config/database.js';
 import { demoMode } from '../config/runtime.js';
+import { issueVerificationProof } from '../services/verificationProof.js';
 
 const emailValid = (value: unknown): value is string => typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254;
 const code = () => crypto.randomInt(100000, 1000000).toString();
@@ -29,7 +30,7 @@ export function verifyCode(req: Request, res: Response) {
   const record = db.prepare('SELECT * FROM email_verifications WHERE email = ?').get(email) as any;
   if (!record || record.expires_at < new Date().toISOString() || record.code !== req.body.code.trim()) return res.status(400).json({ error: 'Código inválido ou expirado.' });
   db.prepare('UPDATE email_verifications SET verified = 1 WHERE email = ?').run(email);
-  return res.json({ valid: true, message: 'E-mail confirmado.' });
+  return res.json({ valid: true, message: 'E-mail confirmado.', verificationToken: issueVerificationProof('registration-email', email, record.code, record.expires_at) });
 }
 export async function forgotPassword(req: Request, res: Response) {
   if (!emailValid(req.body.email)) return res.status(400).json({ error: 'Informe um e-mail válido.' });
@@ -66,5 +67,5 @@ export function verifyParentalConsent(req: Request, res: Response) {
   const record = db.prepare('SELECT * FROM parental_consents WHERE parent_phone = ?').get(phone) as any;
   if (!record || record.code !== req.body.code.trim() || record.expires_at < new Date().toISOString()) return res.status(400).json({ error: 'Autorização inválida ou expirada.' });
   db.prepare('UPDATE parental_consents SET verified = 1 WHERE parent_phone = ?').run(phone);
-  return res.json({ valid: true, message: 'Autorização confirmada.' });
+  return res.json({ valid: true, message: 'Autorização confirmada.', consentToken: issueVerificationProof('parental-consent', phone, record.code, record.expires_at, record.child_name) });
 }

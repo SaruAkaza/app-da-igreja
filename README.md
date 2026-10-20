@@ -30,9 +30,10 @@ npm run tunnel
 Isso gerará um link público seguro (ex: `https://sua-igreja.loca.lt`) que você pode enviar no WhatsApp para qualquer pessoa abrir no celular ou computador imediatamente!
 
 #### 2. Build Unificado e Deploy em Nuvem (Render / Railway / VPS):
-Gere o build estático do aplicativo web:
+Compile a API e gere o aplicativo web para iniciar a implantação unificada:
 ```bash
-npm run build:web
+npm run build
+npm start
 ```
 O backend em Node.js servirá tudo em um único endereço:
 * `/` -> Aplicativo Mobile Web (membros e líderes)
@@ -65,7 +66,7 @@ Os códigos de confirmação aparecem na tela **somente na demonstração**. Ela
 
 1. Copie `backend/.env.example` para `backend/.env`. Preencha `JWT_SECRET` com uma chave aleatória de pelo menos 32 caracteres. Guarde essa chave: sua troca encerra as sessões existentes. Sem chave em desenvolvimento, uma chave temporária é criada a cada reinicialização.
 2. Configure `SMTP_URL` e `MAIL_FROM` para confirmação de e-mail e recuperação de senha. Por exemplo, uma URL de conexão SMTP fornecida pelo seu provedor. O aplicativo informa quando o serviço ainda não está configurado.
-3. Cadastre a igreja pelo botão **Levar o Comunhão para minha igreja** na entrada do aplicativo, ou entre com um administrador já existente. O painel exige perfil de administrador; líderes têm seu espaço no aplicativo.
+3. Cadastre a igreja pelo botão **Levar o Comunhão para minha igreja** na entrada do aplicativo e confirme o e-mail pastoral, ou entre com um administrador já existente. O código da igreja aparece antes de iniciar a sessão. O painel exige perfil de administrador; líderes têm seu espaço no aplicativo.
 4. No painel, crie grupos, compartilhe seus códigos e cadastre os prêmios disponíveis. Cada prêmio pertence ao trimestre atual; se não existir uma temporada para ele, o servidor a cria.
 5. Os membros criam a conta em duas etapas, confirmam o e-mail, entram na igreja/grupo e registram sua primeira leitura. Menores também precisam de autorização do responsável.
 
@@ -93,7 +94,11 @@ Faça backup consistente do SQLite e das duas pastas de uploads antes de uma atu
 npm run check
 ```
 
-Executa compilação do backend, testes de integração HTTP, checagem de tipos do aplicativo e lint. Os testes criam banco e uploads temporários, iniciam uma API em porta aleatória e removem seus próprios arquivos ao terminar. Eles nunca se conectam ao servidor da porta 3000 nem alteram o banco da igreja.
+Executa compilação do backend, 149 verificações de API, autenticação, configuração e CEP, checagem de tipos do aplicativo e lint. Os testes criam banco e uploads temporários, iniciam uma API em porta aleatória e removem seus próprios arquivos ao terminar. Eles nunca se conectam ao servidor da porta 3000 nem alteram o banco da igreja. Os provedores de CEP são controlados nos testes; a suíte não depende da internet nem entrega mensagens reais.
+
+Para verificar os formulários no navegador, instale opcionalmente `playwright` com `npm install --no-save --package-lock=false playwright` e o Chromium com `npx playwright install chromium`. Com o build pronto, inicie **uma API de demonstração com DATA_DIR temporário** e execute `npm run test:browser`. O runner usa `http://127.0.0.1:3017` por padrão, configurável em `COMUNHAO_TEST_URL`, e só aceita localhost com demonstração habilitada. Ele cria contas fictícias nesse banco. `PLAYWRIGHT_CHROMIUM_PATH` seleciona um Chromium já instalado e `COMUNHAO_TEST_ARTIFACTS` define a pasta de capturas.
+
+Veja os problemas corrigidos, evidências e limites em [Validação de 20/10/2026](docs/VALIDACAO-2026-10-20.md). Clientes do app precisam acompanhar a atualização da API: os cadastros agora enviam `emailVerificationToken` devolvido pela confirmação do e-mail, e menores enviam `parentConsentToken` devolvido pela confirmação do responsável.
 
 Para exportar o aplicativo web, execute `npx expo export --platform web` na pasta `mobile`.
 

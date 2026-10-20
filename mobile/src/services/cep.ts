@@ -72,7 +72,7 @@ export async function searchCep(raw: string): Promise<CepResult> {
         };
       }
     }
-  } catch (fallbackErr) {
+  } catch {
     // Falha em ambas as tentativas
   }
 

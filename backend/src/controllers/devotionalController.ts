@@ -22,8 +22,9 @@ export const createDevotional = async (req: Request, res: Response) => {
     if (!req.file) return res.status(400).json({ error: 'Anexe a foto da sua anotação.' });
     const extension = imageExtension(req.file.buffer);
     if (!extension) return res.status(400).json({ error: 'O arquivo não contém uma imagem JPEG, PNG ou WebP válida.' });
-    const group = db.prepare('SELECT id FROM groups WHERE id = ? AND church_id = ?').get(groupId || '', churchId);
+    const group = db.prepare('SELECT id, cycle_status FROM groups WHERE id = ? AND church_id = ?').get(groupId || '', churchId) as { id: string; cycle_status: string | null } | undefined;
     if (!group) return res.status(404).json({ error: 'Grupo não encontrado nesta igreja.' });
+    if (group.cycle_status === 'completed') return res.status(409).json({ error: 'O ciclo deste grupo já foi encerrado.' });
     const membership = db.prepare('SELECT id FROM group_members WHERE group_id = ? AND user_id = ?').get(groupId, userId);
     if (!membership) return res.status(403).json({ error: 'Entre no grupo antes de enviar sua anotação.' });
     if (typeof passageOrChapter !== 'string' || !passageOrChapter.trim() || passageOrChapter.length > 200 || (notes && (typeof notes !== 'string' || notes.length > 5000))) return res.status(400).json({ error: 'Informe a passagem (até 200 caracteres) e uma reflexão com até 5.000 caracteres.' });

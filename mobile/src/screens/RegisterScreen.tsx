@@ -71,12 +71,13 @@ export function RegisterScreen({ navigation }: { navigation: any }) {
   async function finish(){
     if(busy)return;setError('');setBusy(true);
     try{
-      await api.post('/api/auth/verify-code',{email:email.trim(),code:emailCode.trim()});
-      if(minor)await api.post('/api/auth/parental-consent/verify',{parentPhone,code:parentCode.trim()});
+      const verification=await api.post('/api/auth/verify-code',{email:email.trim(),code:emailCode.trim()});
+      const consent=minor?await api.post('/api/auth/parental-consent/verify',{parentPhone,code:parentCode.trim()}):null;
       await register({
         name:name.trim(),
         lastName:lastName.trim(),
         email:email.trim(),
+        emailVerificationToken:verification.data.verificationToken,
         age:Number(age),
         password,
         confirmPassword:confirm,
@@ -86,7 +87,7 @@ export function RegisterScreen({ navigation }: { navigation: any }) {
         addressNeighborhood:addressNeighborhood.trim(),
         addressCity:addressCity.trim(),
         addressState:addressState.trim().toUpperCase(),
-        ...(minor?{parentPhone,parentConsentCode:parentCode.trim()}:{})
+        ...(minor?{parentPhone,parentConsentToken:consent?.data.consentToken}:{})
       });
     }catch(e:any){setError(e.response?.data?.error||'Não conseguimos concluir seu cadastro. Confira os dados e tente novamente.');}finally{setBusy(false);}
   }

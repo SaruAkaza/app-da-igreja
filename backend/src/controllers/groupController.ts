@@ -4,6 +4,9 @@ import crypto from 'crypto';
 import { db } from '../config/database.js';
 import { calculateCycleMath, closeGroupCycleAndAwardPodium } from '../services/rewards.js';
 
+const validDay = (value: unknown): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+const validCycleDates = (start: unknown, end: unknown) => (!start || validDay(start)) && (!end || validDay(end)) && (!start || !end || String(end) >= String(start));
+
 export const listGroups = (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
@@ -203,6 +206,7 @@ export const createGroup = (req: Request, res: Response) => {
 
     const startVal = cycle_start_date || cycleStartDate || null;
     const endVal = cycle_end_date || cycleEndDate || null;
+    if (!validCycleDates(startVal, endVal)) return res.status(400).json({ error: 'Informe datas válidas para o ciclo, com término igual ou posterior ao início.' });
 
     const groupId = `grp-${crypto.randomUUID()}`;
     const now = new Date().toISOString();
@@ -214,12 +218,12 @@ export const createGroup = (req: Request, res: Response) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
     `).run(groupId, churchId, leader, title.trim(), description || '', category, book_or_theme.trim(), cover, cleanCode, startVal, endVal, now);
 
-    // O criador/líder entra automaticamente no grupo
-    if (req.user?.id) {
+    // O criador e o líder escolhido entram automaticamente no grupo.
+    for (const memberId of new Set([req.user?.id, leader].filter(Boolean))) {
       db.prepare(`
         INSERT INTO group_members (id, group_id, user_id, joined_at)
         VALUES (?, ?, ?, ?)
-      `).run(`gm-${crypto.randomUUID()}`, groupId, req.user.id, now);
+      `).run(`gm-${crypto.randomUUID()}`, groupId, memberId, now);
     }
 
     return res.status(201).json({
@@ -283,7 +287,10 @@ export const updateGroup = (req: Request, res: Response) => {
 
     const newStart = cycle_start_date !== undefined ? cycle_start_date : (cycleStartDate !== undefined ? cycleStartDate : group.cycle_start_date);
     const newEnd = cycle_end_date !== undefined ? cycle_end_date : (cycleEndDate !== undefined ? cycleEndDate : group.cycle_end_date);
-    const newStatus = cycle_status !== undefined ? cycle_status : (cycleStatus !== undefined ? cycleStatus : group.cycle_status);
+    const newStatus = cycle_status !== undefined ? cycle_status : (cycleStatus !== undefined ? cycleStatus : (group.cycle_status || 'active'));
+    if (!validCycleDates(newStart, newEnd)) return res.status(400).json({ error: 'Informe datas válidas para o ciclo, com término igual ou posterior ao início.' });
+    if (!['active', 'completed'].includes(newStatus)) return res.status(400).json({ error: 'Situação do ciclo inválida.' });
+    if (newStatus !== (group.cycle_status || 'active')) return res.status(400).json({ error: 'Use a ação de encerrar ciclo para concluir o grupo. Um ciclo encerrado não pode ser reaberto.' });
 
     db.prepare(`
       UPDATE groups SET
@@ -342,6 +349,8 @@ export const deleteGroup = (req: Request, res: Response) => {
 
     const group = db.prepare('SELECT * FROM groups WHERE id = ? AND church_id = ?').get(id, churchId) as any;
     if (!group) return res.status(404).json({ error: 'Grupo não encontrado.' });
+
+    if (db.prepare('SELECT id FROM rewards WHERE group_id = ? AND church_id = ? LIMIT 1').get(id, churchId)) return res.status(409).json({ error: 'Revise ou remova os prêmios vinculados antes de excluir este grupo.' });
 
     db.transaction(() => {
       // Limpar reações e feedbacks dos devocionais deste grupo
@@ -415,6 +424,8 @@ export const addGroupMember = (req: Request, res: Response) => {
     const group = db.prepare('SELECT * FROM groups WHERE id = ? AND church_id = ?').get(id, churchId) as any;
     if (!group) return res.status(404).json({ error: 'Grupo não encontrado.' });
 
+    if (userRole === 'leader' && group.leader_id !== req.user?.id) return res.status(403).json({ error: 'Somente o líder responsável pode adicionar membros a este grupo.' });
+
     const targetUser = db.prepare('SELECT id, name FROM users WHERE id = ? AND church_id = ?').get(userId, churchId) as any;
     if (!targetUser) return res.status(404).json({ error: 'Membro não encontrado nesta congregação.' });
 
@@ -447,6 +458,8 @@ export const removeGroupMember = (req: Request, res: Response) => {
 
     const group = db.prepare('SELECT * FROM groups WHERE id = ? AND church_id = ?').get(id, churchId) as any;
     if (!group) return res.status(404).json({ error: 'Grupo não encontrado.' });
+
+    if (userRole === 'leader' && group.leader_id !== req.user?.id) return res.status(403).json({ error: 'Somente o líder responsável pode remover membros deste grupo.' });
 
     if (group.leader_id === userId) {
       return res.status(400).json({ error: 'Não é possível remover o líder do grupo. Troque a liderança antes de remover.' });
@@ -525,6 +538,7 @@ export const closeGroupCycleEndpoint = (req: Request, res: Response) => {
     if (!isLeader && !isAdmin) {
       return res.status(403).json({ error: 'Apenas o líder do grupo ou administradores podem encerrar o ciclo.' });
     }
+    if (group.cycle_status === 'completed') return res.status(409).json({ error: 'Este ciclo já foi encerrado.' });
 
     const result = closeGroupCycleAndAwardPodium(id, churchId!, userId);
     return res.json({

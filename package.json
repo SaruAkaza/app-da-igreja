@@ -8,10 +8,11 @@
     "demo": "node scripts/dev.mjs --demo",
     "reset-db": "node backend/node_modules/tsx/dist/cli.mjs backend/src/scripts/resetCleanDb.ts",
     "build:web": "cd mobile && npx expo export -p web",
-    "build": "npm run build:web",
-    "start": "node --import tsx/esm backend/src/server.ts",
+    "build": "npm --prefix backend run build && npm run build:web",
+    "start": "npm --prefix backend start",
     "tunnel": "npx localtunnel --port 3000",
     "test": "npm --prefix backend test",
+    "test:browser": "node scripts/browser-check.mjs",
     "check": "node scripts/check.mjs"
   },
   "engines": { "node": ">=22.13.0" }

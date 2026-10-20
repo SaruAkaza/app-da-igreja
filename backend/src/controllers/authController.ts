@@ -4,6 +4,25 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { db } from '../config/database.js';
 import { generateToken, UserRole } from '../middleware/auth.js';
+import { validVerificationProof } from '../services/verificationProof.js';
+
+const emailValid = (value: unknown): value is string => typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()) && value.trim().length <= 254;
+const privateUserFields = new Set(['password_hash', 'verification_code', 'verification_code_expires_at', 'parent_consent_code', 'session_version']);
+const publicUser = (user: any) => Object.fromEntries(Object.entries(user).filter(([key]) => !privateUserFields.has(key)));
+function uniqueHandle(preferred: string) {
+  let handle = preferred;
+  while (db.prepare('SELECT id FROM users WHERE LOWER(username_handle) = ?').get(handle.toLowerCase())) handle = preferred + '.' + crypto.randomBytes(4).toString('hex');
+  return handle;
+}
+function emailProof(email: string, token: unknown) {
+  const record = db.prepare('SELECT * FROM email_verifications WHERE email = ?').get(email);
+  return validVerificationProof(token, 'registration-email', email, record);
+}
+function consentProof(phone: string, name: string, token: unknown) {
+  const cleanPhone = phone.replace(/\D/g, '');
+  const record = db.prepare('SELECT * FROM parental_consents WHERE parent_phone = ?').get(cleanPhone);
+  return validVerificationProof(token, 'parental-consent', cleanPhone, record, name);
+}
 
 // Validação de senha forte (mínimo 8 caracteres, letras, números e caracteres especiais)
 export function validateStrongPassword(password: string): { valid: boolean; reason?: string } {
@@ -85,7 +104,7 @@ export function calculateProfileCompletion(userData: {
   }
 
   // 6. Endereço completo (15%)
-  if (userData.address_street && userData.address_neighborhood && userData.address_city && userData.address_state) {
+  if (userData.address_street?.trim() && userData.address_neighborhood?.trim() && userData.address_city?.trim() && userData.address_state?.trim()) {
     score += 15;
   } else {
     missing.push('Endereço completo (Rua, Bairro, Cidade, Estado)');
@@ -109,7 +128,7 @@ export const register = async (req: Request, res: Response) => {
       usernameHandle,
       age,
       parentPhone,
-      parentConsentCode,
+      parentConsentToken,
       addressStreet,
       addressNeighborhood,
       addressCity,
@@ -117,9 +136,10 @@ export const register = async (req: Request, res: Response) => {
       addressZipcode,
       avatarUrl,
       churchCode,
+      emailVerificationToken,
     } = req.body;
 
-    if (!name?.trim() || name.length > 100 || !email || !password) {
+    if (!name?.trim() || name.length > 100 || !emailValid(email) || !password) {
       return res.status(400).json({ error: 'Preencha os campos obrigatórios (nome, email e senha).' });
     }
 
@@ -140,17 +160,14 @@ export const register = async (req: Request, res: Response) => {
 
     // Regra de menor de idade (< 18 anos)
     const numAge = Number(age);
-    if (!Number.isInteger(numAge) || numAge < 1 || numAge > 120) return res.status(400).json({ error: 'Informe uma idade válida.' });
+    if (!['number', 'string'].includes(typeof age) || !Number.isInteger(numAge) || numAge < 1 || numAge > 120) return res.status(400).json({ error: 'Informe uma idade válida.' });
     let parentVerified = 0;
     if (numAge > 0 && numAge < 18) {
       if (!parentPhone) {
         return res.status(400).json({ error: 'Para menores de 18 anos, o telefone do pai/responsável é obrigatório.' });
       }
-      const cleanPhone = parentPhone.replace(/\D/g, '');
-      const consent = db.prepare('SELECT * FROM parental_consents WHERE parent_phone = ?').get(cleanPhone) as any;
-      if (consent && consent.verified === 1 && consent.expires_at > new Date().toISOString() && consent.child_name.toLowerCase() === name.trim().toLowerCase()) {
-        parentVerified = 1;
-      } else return res.status(400).json({ error: 'A autorização do responsável precisa ser confirmada.' });
+      if (consentProof(parentPhone, name, parentConsentToken)) parentVerified = 1;
+      else return res.status(400).json({ error: 'A autorização do responsável precisa ser confirmada.' });
     }
 
     // Formatação de Handle (@handle)
@@ -160,14 +177,9 @@ export const register = async (req: Request, res: Response) => {
     }
 
     // Garantir handle único
-    const existingHandle = db.prepare('SELECT id FROM users WHERE LOWER(username_handle) = ?').get(formattedHandle);
-    if (existingHandle) {
-      formattedHandle = `${formattedHandle}.${Math.floor(100 + Math.random() * 900)}`;
-    }
 
     // Verificar se e-mail foi validado por 2FA
-    const verification = db.prepare('SELECT verified, expires_at FROM email_verifications WHERE email = ?').get(cleanEmail) as { verified: number; expires_at: string } | undefined;
-    if (!verification?.verified || verification.expires_at < new Date().toISOString()) return res.status(400).json({ error: 'Confirme seu e-mail antes de concluir o cadastro.' });
+    if (!emailProof(cleanEmail, emailVerificationToken)) return res.status(400).json({ error: 'Confirme seu e-mail antes de concluir o cadastro.' });
     const emailVerified = 1;
 
     // Vincular à igreja caso fornecido código
@@ -178,6 +190,10 @@ export const register = async (req: Request, res: Response) => {
 
     const userId = `usr-${crypto.randomUUID()}`;
     const passwordHash = await bcrypt.hash(password, 10);
+    if (db.prepare('SELECT id FROM users WHERE email = ?').get(cleanEmail)) return res.status(409).json({ error: 'Este e-mail já está cadastrado. Faça login para acessar.' });
+    if (!emailProof(cleanEmail, emailVerificationToken)) return res.status(400).json({ error: 'Confirme seu e-mail antes de concluir o cadastro.' });
+    if (parentVerified && !consentProof(parentPhone, name, parentConsentToken)) return res.status(400).json({ error: 'Confirme novamente a autorização do responsável.' });
+    formattedHandle = uniqueHandle(formattedHandle);
     const now = new Date().toISOString();
     if (churchCode && !church) return res.status(400).json({ error: 'Código de igreja inválido.' });
     const defaultAvatar = avatarUrl || '';
@@ -207,56 +223,61 @@ export const register = async (req: Request, res: Response) => {
       bonusAwarded = 1;
     }
 
-    db.prepare(`
-      INSERT INTO users (
-        id, church_id, name, last_name, username_handle, age, parent_phone,
-        parent_consent_verified, email, email_verified, password_hash,
-        address_street, address_neighborhood, address_city, address_state, address_zipcode,
-        profile_completion_percent, profile_bonus_awarded, role,
-        current_streak, highest_streak, total_points, avatar_url, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'member', 0, 0, ?, ?, ?)
-    `).run(
-      userId,
-      church ? church.id : null,
-      name.trim(),
-      lastName ? lastName.trim() : null,
-      formattedHandle,
-      numAge || null,
-      parentPhone ? parentPhone.trim() : null,
-      parentVerified,
-      cleanEmail,
-      emailVerified,
-      passwordHash,
-      addressStreet ? addressStreet.trim() : null,
-      addressNeighborhood ? addressNeighborhood.trim() : null,
-      addressCity ? addressCity.trim() : null,
-      addressState ? addressState.trim() : null,
-      addressZipcode ? addressZipcode.trim() : null,
-      percent,
-      bonusAwarded,
-      bonusPoints,
-      defaultAvatar,
-      now
-    );
-
-    // Se ganhou bônus de 100%, registrar no histórico de pontos
-    if (bonusAwarded === 1 && church) {
+    db.transaction(() => {
       db.prepare(`
-        INSERT INTO point_history (id, church_id, user_id, amount, reason, created_at)
-        VALUES (?, ?, ?, 100, 'Bônus de Cadastro Completo (100%)', ?)
-      `).run(`ph-${crypto.randomUUID()}`, church.id, userId, now);
-    }
+        INSERT INTO users (
+          id, church_id, name, last_name, username_handle, age, parent_phone,
+          parent_consent_verified, email, email_verified, password_hash,
+          address_street, address_neighborhood, address_city, address_state, address_zipcode,
+          profile_completion_percent, profile_bonus_awarded, role,
+          current_streak, highest_streak, total_points, avatar_url, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'member', 0, 0, ?, ?, ?)
+      `).run(
+        userId,
+        church ? church.id : null,
+        name.trim(),
+        lastName ? lastName.trim() : null,
+        formattedHandle,
+        numAge || null,
+        parentPhone ? parentPhone.trim() : null,
+        parentVerified,
+        cleanEmail,
+        emailVerified,
+        passwordHash,
+        addressStreet ? addressStreet.trim() : null,
+        addressNeighborhood ? addressNeighborhood.trim() : null,
+        addressCity ? addressCity.trim() : null,
+        addressState ? addressState.trim() : null,
+        addressZipcode ? addressZipcode.trim() : null,
+        percent,
+        bonusAwarded,
+        bonusPoints,
+        defaultAvatar,
+        now
+      );
 
-    // Se foi vinculado a uma igreja, ingressar automaticamente no primeiro grupo de estudo
-    if (church) {
-      const firstGroup = db.prepare('SELECT id FROM groups WHERE church_id = ? ORDER BY created_at ASC LIMIT 1').get(church.id) as { id: string } | undefined;
-      if (firstGroup) {
+      // Se ganhou bônus de 100%, registrar no histórico de pontos
+      if (bonusAwarded === 1 && church) {
         db.prepare(`
-          INSERT INTO group_members (id, group_id, user_id, joined_at)
-          VALUES (?, ?, ?, ?)
-        `).run(`gm-${crypto.randomUUID()}`, firstGroup.id, userId, now);
+          INSERT INTO point_history (id, church_id, user_id, amount, reason, created_at)
+          VALUES (?, ?, ?, 100, 'Bônus de Cadastro Completo (100%)', ?)
+        `).run(`ph-${crypto.randomUUID()}`, church.id, userId, now);
       }
-    }
+
+      // Se foi vinculado a uma igreja, ingressar automaticamente no primeiro grupo de estudo
+      if (church) {
+        const firstGroup = db.prepare('SELECT id FROM groups WHERE church_id = ? ORDER BY created_at ASC LIMIT 1').get(church.id) as { id: string } | undefined;
+        if (firstGroup) {
+          db.prepare(`
+            INSERT INTO group_members (id, group_id, user_id, joined_at)
+            VALUES (?, ?, ?, ?)
+          `).run(`gm-${crypto.randomUUID()}`, firstGroup.id, userId, now);
+        }
+      }
+
+      db.prepare('DELETE FROM email_verifications WHERE email = ?').run(cleanEmail);
+      if (parentVerified) db.prepare('DELETE FROM parental_consents WHERE parent_phone = ?').run(parentPhone.replace(/\D/g, ''));
+    })();
 
     const token = generateToken({
       id: userId,
@@ -314,7 +335,7 @@ export const updateProfile = async (req: Request, res: Response) => {
       usernameHandle,
       age,
       parentPhone,
-      parentConsentCode,
+      parentConsentToken,
       addressStreet,
       addressNeighborhood,
       addressCity,
@@ -331,18 +352,21 @@ export const updateProfile = async (req: Request, res: Response) => {
     }
 
     const newAge = age !== undefined ? Number(age) : currentUser.age;
-    if (!newName || newName.length > 100 || (newAge && (!Number.isInteger(newAge) || newAge < 1 || newAge > 120))) return res.status(400).json({ error: 'Confira o nome e a idade.' });
+    if (!newName || newName.length > 100 || (age !== undefined && (!['number', 'string'].includes(typeof age) || !Number.isInteger(newAge) || newAge < 1 || newAge > 120))) return res.status(400).json({ error: 'Confira o nome e a idade.' });
     if (newHandle && db.prepare('SELECT id FROM users WHERE LOWER(username_handle) = ? AND id != ?').get(newHandle, userId)) return res.status(409).json({ error: 'Este nome de usuário já está em uso.' });
     const newParentPhone = parentPhone !== undefined ? parentPhone.trim() : currentUser.parent_phone;
     let parentVerified = currentUser.parent_consent_verified;
-
-    if (newAge > 0 && newAge < 18 && newParentPhone) {
-      const cleanPhone = newParentPhone.replace(/\D/g, '');
-      const consent = db.prepare('SELECT * FROM parental_consents WHERE parent_phone = ?').get(cleanPhone) as any;
-      if (consent && consent.verified === 1 && consent.expires_at > new Date().toISOString() && consent.child_name.toLowerCase() === newName.toLowerCase()) {
+    let consumeConsent = false;
+    const identityChanged = newName.toLowerCase() !== currentUser.name.toLowerCase()
+      || (newParentPhone || '').replace(/\D/g, '') !== (currentUser.parent_phone || '').replace(/\D/g, '');
+    if (identityChanged) parentVerified = 0;
+    if (newAge > 0 && newAge < 18) {
+      if (!parentVerified || identityChanged || !currentUser.age || currentUser.age >= 18) {
+        if (!newParentPhone || !consentProof(newParentPhone, newName, parentConsentToken)) return res.status(400).json({ error: 'Confirme a autorização do responsável para atualizar o perfil de menor.' });
         parentVerified = 1;
+        consumeConsent = true;
       }
-    }
+    } else parentVerified = 0;
 
     const newAvatar = avatarUrl !== undefined ? avatarUrl : currentUser.avatar_url;
     const newStreet = addressStreet !== undefined ? addressStreet.trim() : currentUser.address_street;
@@ -425,6 +449,8 @@ export const updateProfile = async (req: Request, res: Response) => {
       userId
     );
 
+    if (consumeConsent) db.prepare('DELETE FROM parental_consents WHERE parent_phone = ?').run(newParentPhone.replace(/\D/g, ''));
+
     return res.json({
       message: bonusAwardedNow
         ? '🎉 Glória a Deus! Você completou 100% do seu cadastro e ganhou +100 pontos de bônus!'
@@ -433,7 +459,9 @@ export const updateProfile = async (req: Request, res: Response) => {
       profile_completion_percent: percent,
       missing_fields: missing,
       user: {
-        ...currentUser,
+        ...publicUser(currentUser),
+        parent_phone: newParentPhone,
+        parent_consent_verified: parentVerified,
         name: newName,
         last_name: newLastName,
         username_handle: newHandle,
@@ -489,9 +517,11 @@ export const resetPassword = async (req: Request, res: Response) => {
     }
 
     const newHash = await bcrypt.hash(newPassword, 10);
-    db.prepare(`
-      UPDATE users SET password_hash = ?, verification_code = NULL, verification_code_expires_at = NULL, session_version = session_version + 1 WHERE id = ?
-    `).run(newHash, user.id);
+    const changed = db.prepare(`
+      UPDATE users SET password_hash = ?, verification_code = NULL, verification_code_expires_at = NULL, session_version = session_version + 1
+      WHERE id = ? AND verification_code = ? AND verification_code_expires_at > ?
+    `).run(newHash, user.id, code.toString().trim(), new Date().toISOString());
+    if (!changed.changes) return res.status(400).json({ error: 'Código inválido, expirado ou já utilizado.' });
 
     return res.json({
       message: 'Sua senha foi redefinida com sucesso! Você já pode fazer login com a nova senha.',
@@ -516,9 +546,10 @@ export const registerChurch = async (req: Request, res: Response) => {
       pastorName,
       email,
       password,
+      emailVerificationToken,
     } = req.body;
 
-    if (!churchName || !pastorName || !email || !password) {
+    if (!churchName?.trim() || churchName.length > 200 || !pastorName?.trim() || pastorName.length > 100 || !emailValid(email) || !password) {
       return res.status(400).json({ error: 'Nome da igreja, nome do pastor, e-mail e senha são obrigatórios.' });
     }
 
@@ -533,12 +564,12 @@ export const registerChurch = async (req: Request, res: Response) => {
       return res.status(400).json({ error: pwdCheck.reason });
     }
 
+    if (!emailProof(cleanEmail, emailVerificationToken)) return res.status(400).json({ error: 'Confirme seu e-mail antes de cadastrar a igreja.' });
+
     const churchId = `chu-${crypto.randomUUID()}`;
     let cleanSlug = (churchName.replace(/[^a-zA-Z0-9]/g, '').substring(0, 6) + '26').toUpperCase();
-    const existingSlug = db.prepare('SELECT id FROM churches WHERE slug_code = ?').get(cleanSlug);
-    if (existingSlug) {
-      cleanSlug = `${cleanSlug.substring(0, 5)}${Math.floor(100 + Math.random() * 900)}`;
-    }
+    const slugBase = cleanSlug;
+    while (db.prepare('SELECT id FROM churches WHERE slug_code = ?').get(cleanSlug)) cleanSlug = slugBase + crypto.randomBytes(3).toString('hex').toUpperCase();
 
     const now = new Date().toISOString();
     const logoUrl = 'https://images.unsplash.com/photo-1548625361-19598285a815?w=200';
@@ -564,34 +595,36 @@ export const registerChurch = async (req: Request, res: Response) => {
       const userId = `usr-${crypto.randomUUID()}`;
       const defaultAvatar = '';
       const passwordHash = bcrypt.hashSync(password, 10);
-      let pastorHandle = `@pastor.${pastorName.toLowerCase().replace(/\s+/g, '.')}`;
-      const existingHandle = db.prepare('SELECT id FROM users WHERE username_handle = ?').get(pastorHandle);
-      if (existingHandle) {
-        pastorHandle = `${pastorHandle}.${Math.floor(100 + Math.random() * 900)}`;
-      }
+      const pastorHandle = uniqueHandle(`@pastor.${pastorName.trim().toLowerCase().replace(/\s+/g, '.')}`);
+      const profilePercent = calculateProfileCompletion({ name: pastorName.trim(), username_handle: pastorHandle, email_verified: 1 }).percent;
 
       db.prepare(`
         INSERT INTO users (
           id, church_id, name, last_name, username_handle, email, email_verified,
           password_hash, role, current_streak, highest_streak, total_points,
           avatar_url, profile_completion_percent, profile_bonus_awarded, created_at
-        ) VALUES (?, ?, ?, '', ?, ?, 1, ?, 'church_admin', 0, 0, 100, ?, 100, 1, ?)
-      `).run(userId, churchId, pastorName.trim(), pastorHandle, cleanEmail, passwordHash, defaultAvatar, now);
+        ) VALUES (?, ?, ?, '', ?, ?, 1, ?, 'church_admin', 0, 0, 0, ?, ?, 0, ?)
+      `).run(userId, churchId, pastorName.trim(), pastorHandle, cleanEmail, passwordHash, defaultAvatar, profilePercent, now);
 
-      // Criar 1º Trimestre da igreja
+      // Criar a temporada correspondente ao trimestre local de cadastro.
+      const today = localDay();
+      const year = Number(today.slice(0, 4));
+      const quarterMonth = Math.floor((Number(today.slice(5, 7)) - 1) / 3) * 3;
+      const startDate = new Date(Date.UTC(year, quarterMonth, 1)).toISOString().slice(0, 10);
+      const endDate = new Date(Date.UTC(year, quarterMonth + 3, 0)).toISOString().slice(0, 10);
       const quarterId = `qtr-${crypto.randomUUID()}`;
       db.prepare(`
         INSERT INTO quarters (id, church_id, title, start_date, end_date, is_active, created_at)
-        VALUES (?, ?, '1º Trimestre - O Hábito da Palavra', '2026-01-01', '2026-03-31', 1, ?)
-      `).run(quarterId, churchId, now);
+        VALUES (?, ?, ?, ?, ?, 1, ?)
+      `).run(quarterId, churchId, `${quarterMonth / 3 + 1}º Trimestre - O Hábito da Palavra`, startDate, endDate, now);
+      db.prepare('DELETE FROM email_verifications WHERE email = ?').run(cleanEmail);
 
-      return { userId, churchId, cleanSlug };
+      return { userId, churchId, cleanSlug, profilePercent };
     });
 
     const result = createTransaction();
 
-    const inviteLink = `https://app.igreja.com/join/${result.cleanSlug}`;
-    const whatsappShareText = `A paz do Senhor, irmãos da ${churchName.trim()}! Nosso aplicativo devocional já está disponível. Baixe o app e entre com o código da nossa congregação: ${result.cleanSlug} ou acesse direto pelo link: ${inviteLink}`;
+    const whatsappShareText = `A paz do Senhor, irmãos da ${churchName.trim()}! Nosso aplicativo devocional já está disponível. Entre no app com o código da nossa congregação: ${result.cleanSlug}`;
 
     const token = generateToken({
       id: result.userId,
@@ -609,7 +642,7 @@ export const registerChurch = async (req: Request, res: Response) => {
         name: churchName.trim(),
         slug_code: result.cleanSlug,
         cnpj: cnpj || null,
-        invite_link: inviteLink,
+        invite_link: null,
         whatsapp_share_text: whatsappShareText,
       },
       user: {
@@ -617,7 +650,12 @@ export const registerChurch = async (req: Request, res: Response) => {
         name: pastorName.trim(),
         email: cleanEmail,
         role: 'church_admin',
-        total_points: 100,
+        church_id: result.churchId,
+        church_name: churchName.trim(),
+        church_code: result.cleanSlug,
+        profile_completion_percent: result.profilePercent,
+        profile_bonus_awarded: false,
+        total_points: 0,
       },
     });
   } catch (err: any) {
@@ -730,16 +768,10 @@ export const login = async (req: Request, res: Response) => {
     const cleanIdentifier = email.trim().toLowerCase();
     const withAt = cleanIdentifier.startsWith('@') ? cleanIdentifier : `@${cleanIdentifier}`;
     const withoutAt = cleanIdentifier.replace(/^@/, '');
-    const user = db.prepare(`
-      SELECT u.*, c.name AS church_name, c.slug_code AS church_code, c.logo_url AS church_logo
-      FROM users u
-      LEFT JOIN churches c ON c.id = u.church_id
-      WHERE LOWER(u.email) = ? 
-         OR LOWER(u.email) = ?
-         OR LOWER(u.username_handle) = ? 
-         OR LOWER(u.username_handle) = ? 
-         OR LOWER(u.username_handle) = ?
-    `).get(cleanIdentifier, cleanIdentifier + '@igreja.com', cleanIdentifier, withAt, withoutAt) as any;
+    const selectUser = `SELECT u.*, c.name AS church_name, c.slug_code AS church_code, c.logo_url AS church_logo FROM users u LEFT JOIN churches c ON c.id = u.church_id`;
+    const user = (db.prepare(selectUser + ' WHERE LOWER(u.email) = ?').get(cleanIdentifier)
+      || db.prepare(selectUser + ' WHERE LOWER(u.username_handle) IN (?, ?, ?) ORDER BY u.created_at, u.id LIMIT 1').get(cleanIdentifier, withAt, withoutAt)
+      || (!cleanIdentifier.includes('@') ? db.prepare(selectUser + ' WHERE LOWER(u.email) = ?').get(cleanIdentifier + '@igreja.com') : undefined)) as any;
 
     if (!user) {
       return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
@@ -835,7 +867,7 @@ export const getMe = (req: Request, res: Response) => {
     });
 
     return res.json({
-      ...Object.fromEntries(Object.entries(user).filter(([key]) => !['password_hash', 'verification_code', 'verification_code_expires_at', 'parent_consent_code', 'session_version'].includes(key))),
+      ...publicUser(user),
       current_streak: user.last_devotional_date && user.last_devotional_date >= previousDay() ? user.current_streak : 0,
       profile_completion_percent: percent,
       profile_bonus_awarded: user.profile_bonus_awarded === 1,

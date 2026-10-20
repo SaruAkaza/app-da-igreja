@@ -96,6 +96,7 @@ export function closeGroupCycleAndAwardPodium(groupId: string, churchId: string,
   return db.transaction(() => {
     const group = db.prepare("SELECT * FROM groups WHERE id = ? AND church_id = ?").get(groupId, churchId) as any;
     if (!group) throw new Error("Grupo não encontrado na congregação.");
+    if (group.cycle_status === 'completed') throw new Error('Este ciclo já foi encerrado.');
 
     const now = new Date().toISOString();
     db.prepare("UPDATE groups SET cycle_status = 'completed', cycle_closed_at = ? WHERE id = ?").run(now, groupId);
