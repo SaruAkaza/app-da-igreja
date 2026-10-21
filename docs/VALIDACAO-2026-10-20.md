@@ -47,3 +47,13 @@ A consulta real ao CEP 01001000 retornou São Paulo/SP via BrasilAPI. A suíte p
 `npm audit --omit=dev` do backend: **0 vulnerabilidades**. Auditoria do mobile: **26 alertas (19 altos e 7 moderados)** na cadeia do Expo/React Native, incluindo `braces`, `node-forge` e `uuid`; não foi forçada troca incompatível de SDK. Esses alertas continuam pendentes de atualização compatível.
 
 Entrega real por SMTP/SMS/WhatsApp, câmera, permissões nativas, SecureStore e builds Android/iOS dependem dos respectivos serviços/aparelhos e não foram validados. O teste sem credenciais confirma as mensagens de indisponibilidade, não a entrega. As correções não alteram dados legados já existentes nem fazem implantação em produção.
+
+## Instalação no Windows — 21/10/2026
+
+Um teste no Windows x64 com Node 24.12.0 falhou no `node-gyp rebuild` do `better-sqlite3`, por ausência de Visual Studio. O pacote 13.0.3 já distribui um binário Windows x64 e declara `gypfile:false`, mas o `npm ci` reconstrói metadados do lockfile sem preservar essa informação e acaba acionando a compilação implícita. A tentativa foi reproduzida em Linux com npm 11.6.2 e 11.9.0; trocar apenas o npm não a resolveu.
+
+O setup passou a instalar o backend sem executar scripts nessa primeira etapa, respeitar o `gypfile:false` do SQLite e executar os ciclos das demais dependências via `npm rebuild`. Não há desativação global de scripts: o postinstall do esbuild continua sendo executado. Uma consulta SQLite em memória valida o carregamento do binário ao fim da instalação.
+
+A instalação também recusa projetos dentro da pasta do Windows antes de instalar dependências. As instruções de PowerShell agora começam pela pasta do usuário e só iniciam a demonstração se o setup terminar com sucesso. Nenhum arquivo da cópia anterior em System32 é removido.
+
+A correção foi verificada em instalações limpas no Linux, incluindo Node 24.12.0 e npm 11.6.2, sem compilador C/C++ disponível para os processos de teste. A validação física da instalação no Windows continua pendente porque a nova máquina não estava conectada ao Desktop Commander.

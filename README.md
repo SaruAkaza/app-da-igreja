@@ -4,7 +4,7 @@ Aplicativo Expo/React Native para leitura bíblica em comunidade, registro de an
 
 ## Começar
 
-Requer Node.js **22.13 ou mais recente** (validado com Node 24). Abra um terminal na raiz do projeto:
+Requer Node.js **22.13 ou mais recente** (validado com Node 24). No Windows, use uma pasta do seu usuário, como `C:\Users\SEU_USUARIO\Projetos\comunhao-teste`. Abra um terminal na raiz do projeto:
 
 ```powershell
 npm run setup
@@ -12,6 +12,24 @@ npm run dev
 ```
 
 O primeiro comando instala as dependências com os arquivos de versões fixadas. O segundo inicia API e Expo. Pressione **w** no terminal do Expo para abrir o aplicativo no navegador.
+
+### Instalação no Windows
+
+Para criar uma cópia de testes pelo PowerShell:
+
+```powershell
+Set-Location $env:USERPROFILE
+New-Item -ItemType Directory -Force Projetos | Out-Null
+Set-Location Projetos
+git clone --branch fix/auth-registration-audit https://github.com/SaruAkaza/app-da-igreja.git comunhao-teste
+Set-Location comunhao-teste
+npm run setup
+if ($LASTEXITCODE -eq 0) { npm run demo }
+```
+
+O instalador recusa projetos dentro de `C:\Windows`, onde podem ocorrer erros de permissão (`EPERM`). Se uma tentativa anterior ficou em `System32`, crie a nova cópia na pasta do usuário; o instalador não move nem apaga a cópia anterior.
+
+O SQLite desta versão inclui binários para Windows x64/arm64. O setup usa esses binários, valida uma conexão em memória e mantém os scripts de instalação das outras dependências. Isso evita a tentativa automática de `node-gyp rebuild` que exigia Visual Studio mesmo com o binário pronto. Use `npm run setup` na raiz para instalar o projeto.
 
 - Painel administrativo: http://localhost:3000/admin/
 - Aplicativo Mobile Web unificado: http://localhost:3000/ (ou http://localhost:8081 via Metro)
