@@ -10,7 +10,7 @@
     "build:web": "cd mobile && npx expo export -p web",
     "build": "npm run build:web",
     "start": "node --import tsx/esm backend/src/server.ts",
-    "tunnel": "node scripts/tunnel.mjs",
+    "tunnel": ".\\cloudflared.exe tunnel --url http://localhost:3000",
     "test": "npm --prefix backend test",
     "check": "node scripts/check.mjs"
   },
