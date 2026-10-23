@@ -56,6 +56,8 @@ O SQLite desta versão inclui binários para Windows x64/arm64. O setup usa esse
 
 ### 🌐 Como Compartilhar com Outras Pessoas na Internet para Teste
 
+Para publicar a interface no **GitHub Pages**, siga [Publicação e conexão da API](docs/GITHUB-PAGES.md). O workflow já prepara o caminho `/app-da-igreja/` e as rotas. A API precisa de um endereço HTTPS separado para salvar contas, fotos, dúvidas e prêmios; sem essa conexão, a tela de entrada solicita o servidor.
+
 Você pode compartilhar o app de duas maneiras:
 
 #### 1. Link Público Imediato (Túnel sem custo):

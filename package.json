@@ -8,6 +8,7 @@
     "demo": "node scripts/dev.mjs --demo",
     "reset-db": "node backend/node_modules/tsx/dist/cli.mjs backend/src/scripts/resetCleanDb.ts",
     "build:web": "cd mobile && npx expo export -p web",
+    "build:pages": "node scripts/build-pages.mjs",
     "build": "npm --prefix backend run build && npm run build:web",
     "start": "npm --prefix backend start",
     "tunnel": ".\\cloudflared.exe tunnel --url http://localhost:3000",
@@ -15,6 +16,7 @@
     "test:browser": "node scripts/browser-check.mjs",
     "test:auth:browser": "node backend/node_modules/tsx/dist/cli.mjs backend/src/auth-delivery.test.ts --browser",
     "test:journey:browser": "node backend/node_modules/tsx/dist/cli.mjs backend/src/platform-browser.ts",
+    "test:pages:browser": "node backend/node_modules/tsx/dist/cli.mjs backend/src/pages-browser.ts",
     "check": "node scripts/check.mjs"
   },
   "engines": { "node": ">=22.13.0" }
