@@ -680,7 +680,7 @@ export const joinChurchByCode = async (req: Request, res: Response) => {
     }
 
     if (req.user?.church_id && req.user.church_id !== church.id) return res.status(409).json({ error: 'Sua conta já pertence a outra igreja. Solicite a transferência ao administrador.' });
-    db.prepare('UPDATE users SET church_id = ? WHERE id = ?').run(church.id, userId);
+    db.prepare("UPDATE users SET role = CASE WHEN church_id IS NULL OR church_id = '' THEN 'member' ELSE role END, church_id = ? WHERE id = ?").run(church.id, userId);
 
     // Ingressar no primeiro grupo da igreja se não estiver em nenhum
     const firstGroup = db.prepare('SELECT id FROM groups WHERE church_id = ? ORDER BY created_at ASC LIMIT 1').get(church.id) as { id: string } | undefined;

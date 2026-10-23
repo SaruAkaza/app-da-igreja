@@ -21,9 +21,9 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Colors,Spacing,Typography } from '../theme/colors';
 
-export const LeaderScannerScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
+export const LeaderScannerScreen: React.FC<{ navigation?: any; route?: any }> = ({ navigation, route }) => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'redeem' | 'discipleship'>('discipleship');
+  const [activeTab, setActiveTab] = useState<'redeem' | 'discipleship'>(route?.params?.mode === 'redeem' ? 'redeem' : 'discipleship');
 
   // Aba Validador
   const [couponCode, setCouponCode] = useState('');
@@ -39,21 +39,22 @@ export const LeaderScannerScreen: React.FC<{ navigation?: any }> = ({ navigation
 
   const isLeaderOrAdmin = user?.role === 'leader' || user?.role === 'church_admin' || user?.role === 'super_admin';
 
-  const loadLeaderDevotionals = async () => {
+  const groupId = route?.params?.groupId;
+  const loadLeaderDevotionals = useCallback(async () => {
     try {
-      const res = await api.get('/api/devotionals/leader-reviews');
+      const res = await api.get('/api/devotionals/leader-reviews', { params: { groupId } });
       setDevotionals(res.data);
     } catch (e) {
       console.error('Erro ao carregar devocionais para discipulado:', e);
     }
-  };
+  }, [groupId]);
 
   useFocusEffect(
     useCallback(() => {
       if (isLeaderOrAdmin) {
         loadLeaderDevotionals();
       }
-    }, [isLeaderOrAdmin])
+    }, [isLeaderOrAdmin, loadLeaderDevotionals])
   );
 
   const onRefresh = async () => {
@@ -143,6 +144,7 @@ export const LeaderScannerScreen: React.FC<{ navigation?: any }> = ({ navigation
         </View>
 
         {/* Abas da Liderança */}
+        <AccessibleButton title="Responder dúvidas dos meus grupos" variant="outline" onPress={() => navigation?.navigate(groupId ? 'Group' : 'Feedbacks', groupId ? { groupId, tab: 'questions' } : undefined)} />
         <View style={styles.tabBar}>
           <TouchableOpacity
             style={[styles.tabButton, activeTab === 'discipleship' && styles.tabButtonActive]}

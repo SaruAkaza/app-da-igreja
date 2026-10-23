@@ -5,6 +5,7 @@ import { imageExtension } from '../middleware/upload.js';
 import { issueCoupons } from '../services/rewards.js';
 import { localDay, previousDay } from '../config/runtime.js';
 import { Request, Response } from 'express';
+import { accessibleGroup, managesGroup } from '../services/groupAccess.js';
 import crypto from 'crypto';
 import QRCode from 'qrcode';
 import { db } from '../config/database.js';
@@ -174,7 +175,7 @@ export const getFeed = (req: Request, res: Response) => {
     const pageNumber = Number(page); const pageSize = Number(limit);
     if (!Number.isInteger(pageNumber) || pageNumber < 1 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) return res.status(400).json({ error: 'Paginação inválida: página >= 1, limite entre 1 e 100.' });
     const offset = (pageNumber - 1) * pageSize;
-    if (groupId && !db.prepare('SELECT id FROM group_members WHERE group_id = ? AND user_id = ?').get(groupId, userId) && !['church_admin','super_admin'].includes(userRole || '')) return res.status(403).json({ error: 'Entre neste grupo para acompanhar as publicações.' });
+    if (groupId && !accessibleGroup(groupId, req.user!)) return res.status(403).json({ error: 'Entre neste grupo para acompanhar as publicações.' });
 
     let query = `
       SELECT 
@@ -224,7 +225,7 @@ export const getFeed = (req: Request, res: Response) => {
     // Sanitização de privacidade por linha
     const safePosts = posts.map((post) => {
       const isAuthor = post.user_id === userId;
-      const isGroupLeader = post.group_leader_id === userId;
+      const isGroupLeader = userRole === 'leader' && post.group_leader_id === userId;
       const isPastorOrAdmin = userRole === 'church_admin' || userRole === 'super_admin';
       const hasFullAccess = isAuthor || isGroupLeader || isPastorOrAdmin;
 
@@ -328,6 +329,10 @@ export const getLeaderDevotionals = (req: Request, res: Response) => {
     }
 
     const page = Number(req.query.page || 1);
+    if (req.query.groupId) {
+      if (!accessibleGroup(req.query.groupId, req.user!)) return res.status(404).json({ error: 'Grupo não encontrado entre seus acessos.' });
+      query += ' AND d.group_id = ?'; params.push(req.query.groupId);
+    }
     if (!Number.isInteger(page) || page < 1) return res.status(400).json({ error: 'Página inválida.' });
     if (req.query.status === 'pending') query += ' AND NOT EXISTS (SELECT 1 FROM leader_feedbacks lf WHERE lf.devotional_id = d.id)';
     if (req.query.status === 'done') query += ' AND EXISTS (SELECT 1 FROM leader_feedbacks lf WHERE lf.devotional_id = d.id)';
@@ -361,8 +366,8 @@ export const submitLeaderFeedback = (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Devocional não encontrado.' });
     }
 
-    const group = db.prepare('SELECT leader_id FROM groups WHERE id = ?').get(devotional.group_id) as any;
-    if (!['church_admin', 'super_admin'].includes(req.user?.role || '') && group.leader_id !== leaderId) return res.status(403).json({ error: 'Somente o líder responsável pode orientar este grupo.' });
+    const group = db.prepare('SELECT church_id, leader_id FROM groups WHERE id = ?').get(devotional.group_id) as any;
+    if (!managesGroup(req.user!, group)) return res.status(403).json({ error: 'Somente o líder responsável pode orientar este grupo.' });
     if (pastoralGuidance.length > 5000) return res.status(400).json({ error: 'A orientação deve ter até 5.000 caracteres.' });
     if (db.prepare('SELECT id FROM leader_feedbacks WHERE devotional_id = ?').get(devotionalId)) return res.status(409).json({ error: 'Este devocional já recebeu uma orientação.' });
     const feedbackId = `fb-${crypto.randomUUID()}`;
@@ -398,6 +403,8 @@ export const getMyFeedbacks = (req: Request, res: Response) => {
     const feedbacks = db.prepare(`
       SELECT 
         lf.id,
+        lf.group_id,
+        lf.devotional_id,
         lf.pastoral_guidance,
         lf.created_at AS feedback_date,
         d.passage_or_chapter,

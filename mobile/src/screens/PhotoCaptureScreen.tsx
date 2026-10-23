@@ -33,6 +33,7 @@ export const PhotoCaptureScreen: React.FC<{ navigation: any; route: any }> = ({
   const [notes, setNotes] = useState('');
   const [imageAsset, setImageAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [submitMessage, setSubmitMessage] = useState('');
+  const [published, setPublished] = useState<{ id: string; groupId: string; points: number; coupons: number } | null>(null);
   const [imageUri, setImageUri] = useState<string | null>(null);
 
   // Modal acessível de confirmação de nitidez para idosos
@@ -42,8 +43,9 @@ export const PhotoCaptureScreen: React.FC<{ navigation: any; route: any }> = ({
   const loadMyGroups = useCallback(async () => {
     try {
       const res = await api.get('/api/groups/my');
-      setGroups(res.data);
-      setSelectedGroupId(current => preselectedGroupId || (res.data.find((g: Group) => g.id === current && !g.posted_today) ? current : res.data.find((g: Group) => !g.posted_today)?.id || null));
+      const available = res.data.filter((g: Group) => g.cycle_status !== 'completed' && g.is_member);
+      setGroups(available);
+      setSelectedGroupId(current => available.find((g: Group) => g.id === preselectedGroupId && !g.posted_today)?.id || (available.find((g: Group) => g.id === current && !g.posted_today) ? current : available.find((g: Group) => !g.posted_today)?.id || null));
     } catch (e) {
       console.error('Erro ao carregar grupos:', e);
     }
@@ -130,25 +132,11 @@ export const PhotoCaptureScreen: React.FC<{ navigation: any; route: any }> = ({
 
       setReviewModalVisible(false);
       await refreshProfile();
-      setSubmitMessage('Devocional registrado! Acompanhe sua leitura na comunidade.');
+      setSubmitMessage('Leitura registrada! Sua imagem foi entregue à liderança do grupo.');
+      setPublished({ id: res.data.devotional.id, groupId: selectedGroupId, points: res.data.points_earned.total, coupons: res.data.unlocked_coupons?.length || 0 });
       setImageUri(null); setImageAsset(null); setNotes(''); setPassageOrChapter('');
       await loadMyGroups();
 
-      const { points_earned, user_stats, unlocked_coupons } = res.data;
-
-      let msg = `Você ganhou +${points_earned.total} pontos!\nSua sequência agora é de 🔥 ${user_stats.current_streak} dia(s).`;
-      if (unlocked_coupons && unlocked_coupons.length > 0) {
-        msg += `\n\n🎉 PARABÉNS! Você desbloqueou novo cupom de recompensa: ${unlocked_coupons[0].reward_title}!`;
-      }
-
-      Alert.alert('✅ Devocional Publicado com Sucesso!', msg, [
-        {
-          text: 'Glória a Deus! Ver no Feed',
-          onPress: () => {
-            navigation.navigate('Feed', { groupId: selectedGroupId });
-          },
-        },
-      ]);
     } catch (err: any) {
       const errorMsg = err.response?.data?.error || 'Erro ao enviar foto do devocional.';
       setReviewModalVisible(false);
@@ -170,6 +158,12 @@ export const PhotoCaptureScreen: React.FC<{ navigation: any; route: any }> = ({
         </View>
 
         {submitMessage ? <Text accessibilityRole="alert" style={{ color: Colors.primary, padding: 16, lineHeight: 24 }}>{submitMessage}</Text> : null}
+        {published ? <View style={styles.card}>
+          <Text style={styles.title}>Sua leitura continua aqui.</Text><Text style={styles.subtitle}>+{published.points} pontos conquistados.{published.coupons ? ` Você desbloqueou ${published.coupons} novo(s) cupom(ns)!` : ' Acompanhe suas metas no grupo.'}</Text>
+          <AccessibleButton title="Registrar dúvida sobre esta leitura" onPress={() => navigation.navigate('Group', { groupId: published.groupId, tab: 'questions', devotionalId: published.id })} />
+          <AccessibleButton title="Ver minha leitura no grupo" variant="outline" onPress={() => navigation.navigate('Group', { groupId: published.groupId })} />
+          <AccessibleButton title="Acompanhar conquistas do grupo" variant="secondary" onPress={() => navigation.navigate('Group', { groupId: published.groupId, tab: 'rewards' })} />
+        </View> : null}
         {groups.length === 0 ? <AccessibleButton title="Entrar em um grupo de leitura" onPress={() => navigation.navigate('Explore')} /> : null}
         {/* Escolha do Grupo de Estudo */}
         <View style={styles.card}>

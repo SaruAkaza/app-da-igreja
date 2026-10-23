@@ -14,6 +14,7 @@
     "test": "npm --prefix backend test",
     "test:browser": "node scripts/browser-check.mjs",
     "test:auth:browser": "node backend/node_modules/tsx/dist/cli.mjs backend/src/auth-delivery.test.ts --browser",
+    "test:journey:browser": "node backend/node_modules/tsx/dist/cli.mjs backend/src/platform-browser.ts",
     "check": "node scripts/check.mjs"
   },
   "engines": { "node": ">=22.13.0" }

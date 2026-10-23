@@ -1,4 +1,5 @@
 import React,{ createContext,useCallback,useContext,useEffect,useRef,useState } from 'react';
+import { Platform } from 'react-native';
 import { api,initApiConfig,User } from '../services/api';
 import { sessionStorage as storage } from '../services/storage';
 export interface SavedAccount { id: string; name: string; email: string; username_handle?: string | null; avatar_url?: string; church_name?: string | null; token: string }
@@ -8,6 +9,7 @@ interface AuthContextData {
   loginDemo: (type: 'maria'|'joao'|'lider'|'admin'|'raquel'|'pastor_memorial') => Promise<void>;
   register: (payload: any) => Promise<any>; registerChurch: (payload: any) => Promise<any>; enterCreatedChurch: () => Promise<void>;
   switchAccount: (id: string) => Promise<void>; removeSavedAccount: (id: string) => Promise<void>;
+  connectAnotherAccount: () => Promise<void>;
   joinChurch: (code: string) => Promise<void>; joinGroupByCode: (code: string) => Promise<void>;
   logout: () => Promise<void>; refreshProfile: () => Promise<void>;
 }
@@ -25,13 +27,20 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
   const logout=useCallback(async()=>{
     const id=active.current.user?.id,session=active.current.token||await storage.getItem('church_auth_token');active.current={user:null,token:null};setUser(null);setToken(null);
     await storage.removeItem('church_auth_token');await storage.removeItem('church_auth_user');
+    if(Platform.OS==='web' && typeof window!=='undefined')window.sessionStorage.removeItem('communhao_session');
     const raw=await storage.getItem('church_saved_accounts');const accounts:SavedAccount[]=raw?JSON.parse(raw):[];
     const next=accounts.filter(a=>a.id!==id&&a.token!==session);await storage.setItem('church_saved_accounts',JSON.stringify(next));setSavedAccounts(next);
   },[]);
   const apply=useCallback(async(profile:User,session:string)=>{
+    if(Platform.OS==='web' && typeof window!=='undefined')window.sessionStorage.removeItem('communhao_session');
     await storage.setItem('church_auth_token',session);await storage.setItem('church_auth_user',JSON.stringify(profile));
     active.current={token:session,user:profile};setToken(session);setUser(profile);await remember(profile,session);
   },[remember]);
+  const connectAnotherAccount=useCallback(async()=>{
+    active.current={user:null,token:null};setUser(null);setToken(null);
+    await storage.removeItem('church_auth_token');await storage.removeItem('church_auth_user');
+    if(Platform.OS==='web' && typeof window!=='undefined')window.sessionStorage.removeItem('communhao_session');
+  },[]);
   const refreshProfile=useCallback(async()=>{
     const session=active.current.token;if(!session)return;
     try {const response=await api.get('/api/auth/me',{headers:{Authorization:`Bearer ${session}`}});if(active.current.token!==session)return;active.current.user=response.data;setUser(response.data);await storage.setItem('church_auth_user',JSON.stringify(response.data));}
@@ -58,6 +67,6 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
   const joinChurch=useCallback(async(code:string)=>{await api.post('/api/auth/join-church',{code});await refreshProfile();},[refreshProfile]);
   const joinGroupByCode=useCallback(async(inviteCode:string)=>{await api.post('/api/groups/join',{inviteCode});await refreshProfile();},[refreshProfile]);
   const toggleSeniorMode=useCallback(async()=>{const next=!isSeniorMode;setSeniorMode(next);await storage.setItem('church_senior_mode',String(next));},[isSeniorMode]);
-  return <AuthContext.Provider value={{user,token,loading,savedAccounts,isSeniorMode,toggleSeniorMode,login,loginDemo,register,registerChurch,enterCreatedChurch,switchAccount,removeSavedAccount,joinChurch,joinGroupByCode,logout,refreshProfile}}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{user,token,loading,savedAccounts,isSeniorMode,toggleSeniorMode,login,loginDemo,register,registerChurch,enterCreatedChurch,switchAccount,removeSavedAccount,connectAnotherAccount,joinChurch,joinGroupByCode,logout,refreshProfile}}>{children}</AuthContext.Provider>;
 }
 export const useAuth=()=>useContext(AuthContext);

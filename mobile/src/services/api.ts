@@ -89,6 +89,19 @@ export interface Group {
   devotional_count?: number;
   is_member?: boolean;
   posted_today?: boolean;
+  cycle_status?: 'active' | 'completed';
+  can_manage?: boolean;
+  can_manage_rewards?: boolean;
+  group_points?: number;
+  open_questions?: number;
+  unread_answers?: number;
+}
+
+export interface GroupQuestion {
+  id: string; group_id: string; group_title: string; author_id: string; author_name: string;
+  body: string; devotional_id: string | null; passage_or_chapter?: string; image_url?: string;
+  answer: string | null; answered_by_name: string | null; answered_at: string | null;
+  created_at: string; status: 'open' | 'answered'; can_answer: boolean; unread: boolean;
 }
 
 export interface Devotional {

@@ -1,6 +1,7 @@
 import { issueCoupons } from '../services/rewards.js';
 import { localDay, previousDay } from '../config/runtime.js';
 import { Request, Response } from 'express';
+import { groupScoreSql } from '../services/groupAccess.js';
 import crypto from 'crypto';
 import { db } from '../config/database.js';
 
@@ -195,9 +196,12 @@ export const deleteDevotional = (req: Request, res: Response) => {
       if (deductPoints === 'true') {
         db.prepare('UPDATE users SET total_points = MAX(0, total_points - ?) WHERE id = ?').run(devotional.points_awarded, devotional.user_id);
         db.prepare('INSERT INTO point_history (id, church_id, user_id, amount, reason, reference_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run('ph-' + crypto.randomUUID(), churchId, devotional.user_id, -devotional.points_awarded, 'Correção por exclusão de devocional', id, new Date().toISOString());
-        db.prepare("UPDATE user_coupons SET status = 'expired' WHERE user_id = ? AND status = 'active' AND reward_id IN (SELECT id FROM rewards WHERE points_required > (SELECT total_points FROM users WHERE id = ?))").run(devotional.user_id, devotional.user_id);
       }
       db.prepare('DELETE FROM devotionals WHERE id = ?').run(id);
+      db.prepare(`UPDATE user_coupons SET status = 'expired' WHERE user_id = ? AND church_id = ? AND status = 'active'
+        AND reward_id IN (SELECT r.id FROM rewards r WHERE r.church_id = ? AND r.reward_type = 'points'
+          AND r.points_required > CASE WHEN r.group_id IS NULL THEN (SELECT total_points FROM users WHERE id = ?) ELSE ${groupScoreSql('?', 'r.group_id')} END)`)
+        .run(devotional.user_id, churchId, churchId, devotional.user_id, devotional.user_id);
       const dates = db.prepare('SELECT DISTINCT devotional_date FROM devotionals WHERE user_id = ? ORDER BY devotional_date DESC').all(devotional.user_id) as { devotional_date: string }[];
       let streak = 0; let cursor = dates[0]?.devotional_date;
       for (const item of dates) { if (item.devotional_date !== cursor) break; streak++; cursor = previousDay(cursor); }
@@ -340,7 +344,8 @@ export const unlinkMember = (req: Request, res: Response) => {
         DELETE FROM group_members 
         WHERE user_id = ? AND group_id IN (SELECT id FROM groups WHERE church_id = ?)
       `).run(userId, churchId);
-      db.prepare("UPDATE users SET church_id = NULL, role = 'member' WHERE id = ?").run(userId);
+      db.prepare("UPDATE users SET church_id = NULL, role = 'member', total_points = 0, current_streak = 0, highest_streak = 0, last_devotional_date = NULL WHERE id = ?").run(userId);
+      db.prepare("UPDATE user_coupons SET status = 'expired' WHERE user_id = ? AND church_id = ? AND status = 'active'").run(userId, churchId);
     })();
 
     return res.json({ message: `${target.name} foi desvinculado(a) da congregação com sucesso.` });

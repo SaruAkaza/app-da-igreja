@@ -9,6 +9,7 @@ import groupRoutes from './routes/groupRoutes.js';
 import devotionalRoutes from './routes/devotionalRoutes.js';
 import gamificationRoutes from './routes/gamificationRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import questionRoutes from './routes/questionRoutes.js';
 import { createCepRoutes } from './routes/cepRoutes.js';
 import type { CepLookup } from './services/cepService.js';
 import { rateLimit } from './middleware/rateLimit.js';
@@ -42,13 +43,14 @@ export function createApp(services: { lookupCep?: CepLookup } = {}) {
   app.use('/api/devotionals', devotionalRoutes);
   app.use('/api/gamification', gamificationRoutes);
   app.use('/api/admin', adminRoutes);
+  app.use('/api/questions', questionRoutes);
   app.use('/api/cep', createCepRoutes(services.lookupCep));
   app.use('/admin', express.static(path.join(backendRoot, 'public/admin')));
   const mobileDist = path.resolve(backendRoot, '../mobile/dist');
   if (fs.existsSync(mobileDist)) {
     app.use(express.static(mobileDist));
     app.use('/app', express.static(mobileDist));
-    app.get(['/app', '/app/*', '/home', '/explore', '/feed', '/rewards', '/groups', '/leader', '/capture', '/feedbacks', '/register'], (_req, res) => {
+    app.get(['/app', '/app/*', '/home', '/explore', '/feed', '/rewards', '/groups', '/connections', '/group', '/leader', '/capture', '/feedbacks', '/register'], (_req, res) => {
       res.sendFile(path.join(mobileDist, 'index.html'));
     });
     app.get('/', (_req, res) => res.sendFile(path.join(mobileDist, 'index.html')));

@@ -2,6 +2,24 @@
 
 Aplicativo Expo/React Native para leitura bíblica em comunidade, registro de anotações por foto, acompanhamento pastoral e recompensas. O backend usa Node.js, Express, TypeScript e SQLite. O painel web é servido pela própria API.
 
+## Uma plataforma, a comunidade de cada pessoa
+
+Cada conta pertence a uma igreja por vez. A igreja e o cargo são obtidos da sessão no servidor em toda requisição; mudar um endereço ou informar outro `church_id` no formulário não concede acesso a outra congregação. Contas sem igreja entram por convite. A troca de igreja exige desvinculação pela administração e um novo convite, sem carregar o cargo, pontos, sequência ou cupons ativos da igreja anterior.
+
+O **grupo de conexão** reúne quatro espaços: **Leituras**, **Dúvidas**, **Conquistas** e **Pessoas**. A página inicial mostra os grupos da pessoa e avisos de respostas para ler. Depois de enviar uma imagem, o membro pode abrir a leitura no grupo, registrar uma dúvida vinculada à imagem e acompanhar suas metas. A liderança responde na própria conversa privada.
+
+| Perfil | Acesso |
+| --- | --- |
+| Membro | Participa dos seus grupos, envia leituras e dúvidas, recebe respostas e apresenta seus próprios cupons. |
+| Líder | Cuida das leituras, dúvidas e entregas dos grupos atribuídos a ele. Também pode participar de outros grupos como membro. |
+| Administrador da igreja | Gerencia grupos, líderes, participantes e premiações somente da sua igreja. |
+
+Imagens, reflexões, dúvidas e respostas ficam disponíveis ao autor, à liderança responsável e à administração da mesma igreja. Outros participantes veem a celebração da leitura, sem receber o conteúdo privado nem e-mails dos colegas.
+
+Prêmios de grupo usam os pontos das leituras **daquele grupo, dentro do ciclo**; prêmios gerais usam o saldo da igreja. O administrador pode cadastrar metas e pódio na aba **Conquistas** do grupo. Ao atingir uma meta, o cupom aparece nessa aba e em **Meus Prêmios**. A liderança responsável registra a entrega uma única vez. O encerramento do ciclo emite os cupons de pódio, com desempate pela entrada no grupo e pelo identificador do membro. Perguntar ou responder não gera pontos.
+
+Veja os fluxos, regras de acesso e evidências em [Plataforma e grupos de conexão](docs/PLATAFORMA-E-GRUPOS.md).
+
 ## Começar
 
 Requer Node.js **22.13 ou mais recente** (validado com Node 24). No Windows, use uma pasta do seu usuário, como `C:\Users\SEU_USUARIO\Projetos\comunhao-teste`. Abra um terminal na raiz do projeto:
@@ -112,7 +130,7 @@ Faça backup consistente do SQLite e das duas pastas de uploads antes de uma atu
 npm run check
 ```
 
-Executa compilação do backend, 171 verificações de API, autenticação, configuração, entrega de códigos e CEP, checagem de tipos do aplicativo e lint. Os testes criam banco e uploads temporários, iniciam uma API em porta aleatória e removem seus próprios arquivos ao terminar. Eles nunca se conectam ao servidor da porta 3000 nem alteram o banco da igreja. Os provedores de CEP são controlados nos testes; a suíte não depende da internet nem entrega mensagens a pessoas. O envio de códigos é exercitado pelo protocolo SMTP com uma caixa local de testes e `DEMO_MODE=false`.
+Executa compilação do backend, 232 verificações de API, autenticação, configuração, entrega de códigos, jornada, isolamento entre igrejas e CEP, checagem de tipos do aplicativo e lint. Os testes criam banco e uploads temporários, iniciam uma API em porta aleatória e removem seus próprios arquivos ao terminar. Eles nunca se conectam ao servidor da porta 3000 nem alteram o banco da igreja. Os provedores de CEP são controlados nos testes; a suíte não depende da internet nem entrega mensagens a pessoas. O envio de códigos é exercitado pelo protocolo SMTP com uma caixa local de testes e `DEMO_MODE=false`.
 
 Para simular cadastro e login no desktop, iPhone e Android, instale opcionalmente Playwright e seus navegadores e execute:
 
@@ -124,6 +142,8 @@ npm run test:auth:browser
 ```
 
 Esse runner inicia sua própria API, caixa SMTP e receptor de autorização parental no localhost, com banco temporário. Não precisa iniciar `npm run demo` nem configurar credenciais reais. São dez cenários por perfil: Chromium desktop, WebKit com perfil iPhone 13 e Chromium com perfil Pixel 7. As capturas ficam na pasta informada ao final; `COMUNHAO_TEST_ARTIFACTS` permite escolher outra. `COMUNHAO_TEST_PROFILES=desktop,android` seleciona perfis e `PLAYWRIGHT_CHROMIUM_PATH` permite usar um Chromium já instalado.
+
+Para simular a jornada completa — imagem, dúvida, resposta e premiação — com contas de membro, líder e administrador, execute também `npm run test:journey:browser`. O runner usa três perfis de navegador e sua própria API com banco temporário; não envia mensagens nem acessa dados de igrejas reais.
 
 A confirmação de e-mail é exigida no cadastro, com código de uso único e validade de 15 minutos. Esse fluxo não acrescenta um segundo código a cada login. Fora dos testes e da demonstração, a entrega depende de `SMTP_URL` e `MAIL_FROM` configurados.
 

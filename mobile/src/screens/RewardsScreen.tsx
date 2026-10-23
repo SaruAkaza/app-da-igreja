@@ -19,12 +19,14 @@ export const RewardsScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
   const { user, refreshProfile } = useAuth();
   const [rewards, setRewards] = useState<Reward[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
-  const [quarterTitle, setQuarterTitle] = useState('1º Trimestre 2026');
+  const [quarterTitle, setQuarterTitle] = useState('Sua temporada');
+  const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'coupons' | 'catalog'>('coupons');
 
   const loadData = useCallback(async () => {
     try {
+      setError('');
       await refreshProfile();
       const [rewardsRes, couponsRes] = await Promise.all([
         api.get('/api/gamification/rewards'),
@@ -33,11 +35,11 @@ export const RewardsScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
 
       if (rewardsRes.data.quarter) {
         setQuarterTitle(rewardsRes.data.quarter.title);
-      }
+      } else setQuarterTitle('Sem temporada ativa');
       setRewards(rewardsRes.data.rewards || []);
       setCoupons(couponsRes.data || []);
-    } catch (e) {
-      console.error('Erro ao carregar recompensas:', e);
+    } catch (e: any) {
+      setError(e.response?.data?.error || 'Não foi possível carregar seus prêmios. Atualize a página para tentar novamente.');
     }
   }, [refreshProfile]);
 
@@ -70,6 +72,7 @@ export const RewardsScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
         }
       >
+        {error ? <Text accessibilityRole="alert" style={{ color: Colors.danger, padding: 16 }}>{error}</Text> : null}
         {/* Banner de Cabeçalho com Pontuação */}
         <View style={styles.headerCard}>
           <Text style={styles.quarterBadge}>{quarterTitle}</Text>
@@ -84,14 +87,12 @@ export const RewardsScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
               <View
                 style={[
                   styles.fill,
-                  { width: `${Math.min(100, Math.round((userPoints / 4000) * 100))}%` },
+                  { width: `${Math.min(100, Math.round((userPoints / Math.max(1, ...rewards.filter(r => !r.group_id && r.reward_type !== 'podium').map(r => r.points_required))) * 100))}%` },
                 ]}
               />
             </View>
             <View style={styles.tiersMarkers}>
-              <Text style={styles.markerText}>🥉 1.500 (Bronze)</Text>
-              <Text style={styles.markerText}>🥈 2.800 (Prata)</Text>
-              <Text style={styles.markerText}>🥇 4.000 (Ouro)</Text>
+              <Text style={styles.markerText}>Metas definidas pela sua igreja · pontos de grupo calculados separadamente</Text>
             </View>
           </View>
         </View>
@@ -185,6 +186,8 @@ export const RewardsScreen: React.FC<{ navigation: any }> = ({ navigation }) => 
                     <Text style={styles.rewardTitle}>{rew.title}</Text>
                     {!!rew.description && <Text style={styles.rewardDesc}>{rew.description}</Text>}
                     <Text style={styles.rewardPartner}>📍 Retirada: {rew.partner_name}</Text>
+                    {rew.group_id ? <TouchableOpacity accessibilityRole="button" onPress={() => navigation.navigate('Group', { groupId: rew.group_id, tab: 'rewards' })} style={{ paddingVertical: 16 }}><Text style={{ color: Colors.primary, fontWeight: '700' }}>Ver conquista no meu grupo →</Text></TouchableOpacity> : null}
+                    {rew.group_id && rew.reward_type !== 'podium' ? <Text style={styles.rewardPartner}>{rew.user_points} pontos conquistados neste grupo</Text> : null}
 
                     {/* Barra de progresso para prêmios por pontos */}
                     {!isPodium ? (

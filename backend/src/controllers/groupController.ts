@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { db } from '../config/database.js';
 import { calculateCycleMath, closeGroupCycleAndAwardPodium } from '../services/rewards.js';
+import { accessibleGroup, managesGroup, groupScoreSql } from '../services/groupAccess.js';
 
 const validDay = (value: unknown): value is string => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 const validCycleDates = (start: unknown, end: unknown) => (!start || validDay(start)) && (!end || validDay(end)) && (!start || !end || String(end) >= String(start));
@@ -28,7 +29,7 @@ export const listGroups = (req: Request, res: Response) => {
       ORDER BY g.created_at ASC
     `).all(userId, userId, today, churchId);
 
-    return res.json(groups);
+    return res.json((groups as any[]).map(g => ({ ...g, invite_code: g.is_member || managesGroup(req.user!, g) ? g.invite_code : null })));
   } catch (err: any) {
     console.error('Erro ao listar grupos:', err);
     return res.status(500).json({ error: 'Erro ao listar grupos.' });
@@ -49,13 +50,22 @@ export const myGroups = (req: Request, res: Response) => {
         (SELECT COUNT(*) FROM devotionals d WHERE d.group_id = g.id) AS devotional_count,
         EXISTS(SELECT 1 FROM devotionals d WHERE d.group_id = g.id AND d.user_id = ? AND d.devotional_date = ?) AS posted_today
       FROM groups g
-      INNER JOIN group_members gm ON gm.group_id = g.id
+      LEFT JOIN group_members gm ON gm.group_id = g.id AND gm.user_id = ?
       LEFT JOIN users u ON u.id = g.leader_id
-      WHERE gm.user_id = ? AND g.church_id = ?
+      WHERE (gm.user_id = ? OR (g.leader_id = ? AND ? = 'leader')) AND g.church_id = ?
       ORDER BY g.title ASC
-    `).all(userId, today, userId, churchId);
+    `).all(userId, today, userId, userId, userId, req.user!.role, churchId);
 
-    return res.json(groups);
+    return res.json((groups as any[]).map(g => {
+      const manage = managesGroup(req.user!, g);
+      const counts = db.prepare(`SELECT COUNT(*) FILTER (WHERE answer IS NULL) AS open_questions,
+        COUNT(*) FILTER (WHERE author_id = ? AND answer IS NOT NULL AND answer_read_at IS NULL) AS unread_answers
+        FROM group_questions WHERE group_id = ? AND church_id = ? AND (author_id = ? OR ?)`)
+        .get(userId, g.id, churchId, userId, manage ? 1 : 0) as any;
+      const score = db.prepare(`SELECT ${groupScoreSql('?', 'g.id')} AS points FROM groups g WHERE g.id = ?`).get(userId, g.id) as any;
+      const member = db.prepare('SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?').get(g.id, userId);
+      return { ...g, ...counts, group_points: score.points, can_manage: manage, is_member: !!member };
+    }));
   } catch (err: any) {
     console.error('Erro ao buscar meus grupos:', err);
     return res.status(500).json({ error: 'Erro ao buscar grupos do usuário.' });
@@ -87,6 +97,8 @@ export const getGroupDetails = (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Grupo não encontrado.' });
     }
 
+    if (!accessibleGroup(id, req.user!)) return res.status(403).json({ error: 'Entre neste grupo para acompanhar seus participantes.' });
+
     // Membros do grupo com indicador de quem já fez devocional hoje
     const members = db.prepare(`
       SELECT 
@@ -107,6 +119,8 @@ export const getGroupDetails = (req: Request, res: Response) => {
     return res.json({
       ...group,
       members,
+      can_manage: managesGroup(req.user!, group),
+      can_manage_rewards: req.user!.role === 'church_admin',
     });
   } catch (err: any) {
     console.error('Erro em getGroupDetails:', err);
@@ -119,6 +133,9 @@ export const joinGroup = (req: Request, res: Response) => {
     const userId = req.user?.id;
     let churchId = req.user?.church_id;
     const { groupId, inviteCode } = req.body;
+
+    if ((!inviteCode && !groupId) || (inviteCode !== undefined && typeof inviteCode !== 'string') || (groupId !== undefined && typeof groupId !== 'string')) return res.status(400).json({ error: 'Informe um código de convite válido.' });
+    if (!churchId && !inviteCode) return res.status(403).json({ error: 'Use um código de convite para entrar na sua igreja.' });
 
     let targetGroup: any;
 
@@ -140,7 +157,6 @@ export const joinGroup = (req: Request, res: Response) => {
     // Se o usuário ainda não tiver igreja vinculada, vincula à igreja deste grupo
     if (churchId && churchId !== targetGroup.church_id) return res.status(403).json({ error: 'Este grupo pertence a outra igreja.' });
     if (!churchId) {
-      db.prepare('UPDATE users SET church_id = ? WHERE id = ?').run(targetGroup.church_id, userId);
       churchId = targetGroup.church_id;
     }
 
@@ -152,10 +168,10 @@ export const joinGroup = (req: Request, res: Response) => {
     const memberId = `gm-${crypto.randomUUID()}`;
     const now = new Date().toISOString();
 
-    db.prepare(`
-      INSERT INTO group_members (id, group_id, user_id, joined_at)
-      VALUES (?, ?, ?, ?)
-    `).run(memberId, targetGroup.id, userId, now);
+    db.transaction(() => {
+      if (!req.user!.church_id) db.prepare("UPDATE users SET church_id = ?, role = 'member' WHERE id = ?").run(churchId, userId);
+      db.prepare('INSERT INTO group_members (id, group_id, user_id, joined_at) VALUES (?, ?, ?, ?)').run(memberId, targetGroup.id, userId, now);
+    })();
 
     return res.status(201).json({
       message: `Bem-vindo(a) ao grupo "${targetGroup.title}"!`,
@@ -171,6 +187,10 @@ export const leaveGroup = (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
     const { id } = req.params;
+
+    const group = db.prepare('SELECT leader_id FROM groups WHERE id = ? AND church_id = ?').get(id, req.user!.church_id) as any;
+    if (!group) return res.status(404).json({ error: 'Grupo não encontrado.' });
+    if (group.leader_id === userId) return res.status(409).json({ error: 'Defina outro líder responsável antes de sair deste grupo.' });
 
     const result = db.prepare('DELETE FROM group_members WHERE group_id = ? AND user_id = ?').run(id, userId);
     if (result.changes === 0) {
@@ -375,12 +395,14 @@ export const listGroupMembers = (req: Request, res: Response) => {
 
     const group = db.prepare('SELECT * FROM groups WHERE id = ? AND church_id = ?').get(id, churchId) as any;
     if (!group) return res.status(404).json({ error: 'Grupo não encontrado.' });
+    if (!accessibleGroup(id, req.user!)) return res.status(403).json({ error: 'Você não participa deste grupo.' });
+    const manage = managesGroup(req.user!, group);
 
     const members = db.prepare(`
       SELECT 
         u.id,
         u.name,
-        u.email,
+        ${manage ? 'u.email' : 'NULL AS email'},
         u.role,
         u.avatar_url,
         u.current_streak,
@@ -389,9 +411,9 @@ export const listGroupMembers = (req: Request, res: Response) => {
         (u.id = ?) AS is_leader
       FROM group_members gm
       INNER JOIN users u ON u.id = gm.user_id
-      WHERE gm.group_id = ?
+      WHERE gm.group_id = ? AND u.church_id = ?
       ORDER BY is_leader DESC, u.name ASC
-    `).all(group.leader_id, id);
+    `).all(group.leader_id, id, churchId);
 
     return res.json({
       group: {
@@ -481,18 +503,19 @@ export const getGroupCycleDetails = (req: Request, res: Response) => {
     const churchId = req.user?.church_id;
     const group = db.prepare('SELECT * FROM groups WHERE id = ? AND church_id = ?').get(id, churchId) as any;
     if (!group) return res.status(404).json({ error: 'Grupo não encontrado.' });
+    if (!accessibleGroup(id, req.user!)) return res.status(403).json({ error: 'Você não participa deste grupo.' });
 
     const cycleMath = calculateCycleMath(group.cycle_start_date, group.cycle_end_date);
 
     // Top 3 membros do grupo em pontuação (Pódio)
     const podiumMembers = db.prepare(`
-      SELECT u.id, u.name, u.avatar_url, u.total_points, gm.joined_at
+      SELECT u.id, u.name, u.avatar_url, ${groupScoreSql('u.id', '?')} AS total_points, gm.joined_at
       FROM group_members gm
       JOIN users u ON u.id = gm.user_id
-      WHERE gm.group_id = ?
-      ORDER BY u.total_points DESC, gm.joined_at ASC
+      WHERE gm.group_id = ? AND u.church_id = ?
+      ORDER BY total_points DESC, gm.joined_at ASC, u.id ASC
       LIMIT 3
-    `).all(id) as any[];
+    `).all(id, id, churchId) as any[];
 
     // Prêmios vinculados a este grupo (por pontos e por pódio)
     const groupRewards = db.prepare(`

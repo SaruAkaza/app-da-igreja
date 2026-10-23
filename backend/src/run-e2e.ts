@@ -21,8 +21,9 @@ try {
   await runCepTests();
   const { runTests } = await import('./test.js');
   const { runAuthRegression } = await import('./auth-regression.js');
+  const { runPlatformRegression } = await import('./platform-regression.js');
   // Cada suíte usa sua própria instância e o limite real de tentativas de autenticação.
-  for (const suite of [runTests, runAuthRegression]) {
+  for (const suite of [runTests, runAuthRegression, runPlatformRegression]) {
     const server = createApp({ lookupCep: cepFixture }).listen(0, '127.0.0.1');
     try {
       await new Promise<void>((resolve, reject) => { server.once('listening', resolve); server.once('error', reject); });

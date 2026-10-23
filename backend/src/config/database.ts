@@ -259,6 +259,21 @@ export function initDatabase() {
     );
 
     -- Índices para Máxima Performance
+    CREATE TABLE IF NOT EXISTS group_questions (
+      id TEXT PRIMARY KEY,
+      church_id TEXT NOT NULL REFERENCES churches(id) ON DELETE CASCADE,
+      group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+      author_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      devotional_id TEXT REFERENCES devotionals(id) ON DELETE SET NULL,
+      body TEXT NOT NULL,
+      answer TEXT,
+      answered_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+      answered_at TEXT,
+      answer_read_at TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_questions_scope ON group_questions(church_id, group_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_questions_author ON group_questions(author_id, answered_at);
     CREATE INDEX IF NOT EXISTS idx_users_church ON users(church_id);
     CREATE INDEX IF NOT EXISTS idx_groups_church ON groups(church_id);
     CREATE INDEX IF NOT EXISTS idx_devotionals_church ON devotionals(church_id);
