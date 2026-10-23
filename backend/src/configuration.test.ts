@@ -32,7 +32,7 @@ async function runServicesWorker() {
     check('API fora de demonstração informa demo_mode=false', () => {
       assert.equal(result.status, 200); assert.equal(result.data.demo_mode, false);
     });
-    result = await request('/auth/request-code', { email });
+    result = await request('/auth/request-code', { email: 'novo.configuracao@comunhao.example' });
     check('Sem SMTP, cadastro informa indisponibilidade sem expor código', () => {
       assert.equal(result.status, 503); assert.equal(Object.hasOwn(result.data, 'dev_code'), false);
       assert.match(result.data.error, /configurado/);

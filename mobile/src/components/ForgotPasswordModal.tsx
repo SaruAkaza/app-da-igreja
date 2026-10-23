@@ -11,6 +11,7 @@ TouchableOpacity,
 View,
 } from 'react-native';
 import { api } from '../services/api';
+import { passwordError } from '../services/password';
 import { Colors,Spacing,Typography } from '../theme/colors';
 import { AccessibleButton } from './AccessibleButton';
 
@@ -28,18 +29,19 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ visibl
   const [loading, setLoading] = useState(false);
 
   const handleRequestCode = async () => {
+    if (loading) return;
     if (!email) {
       Alert.alert('Atenção', 'Informe seu e-mail cadastrado.');
       return;
     }
     setLoading(true);
     try {
-      const res = await api.post('/api/auth/forgot-password', { email });
+      const res = await api.post('/api/auth/forgot-password', { email: email.trim() });
       Alert.alert(
-        'Código Enviado',
+        'Recuperação de senha',
         res.data.dev_code
           ? `Código de 6 dígitos gerado: ${res.data.dev_code}\n(No ambiente de produção, este código chega ao seu e-mail).`
-          : 'Enviamos um código de 6 dígitos para o seu e-mail cadastrado.'
+          : res.data.message || 'Se este e-mail estiver cadastrado, você receberá um código de recuperação.'
       );
       if (res.data.dev_code) {
         setCode(res.data.dev_code);
@@ -54,6 +56,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ visibl
   };
 
   const handleResetPassword = async () => {
+    if (loading) return;
     if (!code || !newPassword || !confirmPassword) {
       Alert.alert('Atenção', 'Preencha o código e a nova senha.');
       return;
@@ -64,8 +67,9 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ visibl
       return;
     }
 
-    if (newPassword.length < 8) {
-      Alert.alert('Senha Fraca', 'A senha deve conter no mínimo 8 caracteres.');
+    const invalidPassword = passwordError(newPassword);
+    if (invalidPassword) {
+      Alert.alert('Confira a senha', invalidPassword);
       return;
     }
 

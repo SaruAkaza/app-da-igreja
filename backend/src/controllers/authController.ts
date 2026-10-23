@@ -782,6 +782,11 @@ export const login = async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
     }
 
+    const current = db.prepare('SELECT password_hash, session_version FROM users WHERE id = ?').get(user.id) as any;
+    if (!current || current.password_hash !== user.password_hash || current.session_version !== user.session_version) {
+      return res.status(401).json({ error: 'Sua senha foi alterada. Entre novamente com a senha atual.' });
+    }
+
     // Verificar quebra de streak
     const yesterday = previousDay();
     let streak = user.current_streak;
@@ -796,7 +801,7 @@ export const login = async (req: Request, res: Response) => {
       name: user.name,
       email: user.email,
       role: user.role,
-    });
+    }, user.session_version);
 
     return res.json({
       message: 'Login realizado com sucesso!',

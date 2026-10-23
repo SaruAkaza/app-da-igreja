@@ -45,7 +45,7 @@ Com o servidor rodando, abra outro terminal e execute:
 ```bash
 npm run tunnel
 ```
-Isso gerará um link público seguro (ex: `https://sua-igreja.loca.lt`) que você pode enviar no WhatsApp para qualquer pessoa abrir no celular ou computador imediatamente!
+No Windows, esse comando usa o `cloudflared.exe` da raiz do projeto e gera um link HTTPS temporário em `trycloudflare.com`, que pode ser aberto no celular ou computador.
 
 #### 2. Build Unificado e Deploy em Nuvem (Render / Railway / VPS):
 Compile a API e gere o aplicativo web para iniciar a implantação unificada:
@@ -112,11 +112,24 @@ Faça backup consistente do SQLite e das duas pastas de uploads antes de uma atu
 npm run check
 ```
 
-Executa compilação do backend, 149 verificações de API, autenticação, configuração e CEP, checagem de tipos do aplicativo e lint. Os testes criam banco e uploads temporários, iniciam uma API em porta aleatória e removem seus próprios arquivos ao terminar. Eles nunca se conectam ao servidor da porta 3000 nem alteram o banco da igreja. Os provedores de CEP são controlados nos testes; a suíte não depende da internet nem entrega mensagens reais.
+Executa compilação do backend, 171 verificações de API, autenticação, configuração, entrega de códigos e CEP, checagem de tipos do aplicativo e lint. Os testes criam banco e uploads temporários, iniciam uma API em porta aleatória e removem seus próprios arquivos ao terminar. Eles nunca se conectam ao servidor da porta 3000 nem alteram o banco da igreja. Os provedores de CEP são controlados nos testes; a suíte não depende da internet nem entrega mensagens a pessoas. O envio de códigos é exercitado pelo protocolo SMTP com uma caixa local de testes e `DEMO_MODE=false`.
+
+Para simular cadastro e login no desktop, iPhone e Android, instale opcionalmente Playwright e seus navegadores e execute:
+
+```powershell
+npm install --no-save --package-lock=false playwright
+npx playwright install chromium webkit
+npm run build:web
+npm run test:auth:browser
+```
+
+Esse runner inicia sua própria API, caixa SMTP e receptor de autorização parental no localhost, com banco temporário. Não precisa iniciar `npm run demo` nem configurar credenciais reais. São dez cenários por perfil: Chromium desktop, WebKit com perfil iPhone 13 e Chromium com perfil Pixel 7. As capturas ficam na pasta informada ao final; `COMUNHAO_TEST_ARTIFACTS` permite escolher outra. `COMUNHAO_TEST_PROFILES=desktop,android` seleciona perfis e `PLAYWRIGHT_CHROMIUM_PATH` permite usar um Chromium já instalado.
+
+A confirmação de e-mail é exigida no cadastro, com código de uso único e validade de 15 minutos. Esse fluxo não acrescenta um segundo código a cada login. Fora dos testes e da demonstração, a entrega depende de `SMTP_URL` e `MAIL_FROM` configurados.
 
 Para verificar os formulários no navegador, instale opcionalmente `playwright` com `npm install --no-save --package-lock=false playwright` e o Chromium com `npx playwright install chromium`. Com o build pronto, inicie **uma API de demonstração com DATA_DIR temporário** e execute `npm run test:browser`. O runner usa `http://127.0.0.1:3017` por padrão, configurável em `COMUNHAO_TEST_URL`, e só aceita localhost com demonstração habilitada. Ele cria contas fictícias nesse banco. `PLAYWRIGHT_CHROMIUM_PATH` seleciona um Chromium já instalado e `COMUNHAO_TEST_ARTIFACTS` define a pasta de capturas.
 
-Veja os problemas corrigidos, evidências e limites em [Validação de 20/10/2026](docs/VALIDACAO-2026-10-20.md). Clientes do app precisam acompanhar a atualização da API: os cadastros agora enviam `emailVerificationToken` devolvido pela confirmação do e-mail, e menores enviam `parentConsentToken` devolvido pela confirmação do responsável.
+Veja os problemas corrigidos, evidências e limites em [Validação de 23/10/2026](docs/VALIDACAO-2026-10-23.md) e na [revisão anterior](docs/VALIDACAO-2026-10-20.md). Clientes do app precisam acompanhar a atualização da API: os cadastros agora enviam `emailVerificationToken` devolvido pela confirmação do e-mail, e menores enviam `parentConsentToken` devolvido pela confirmação do responsável.
 
 Para exportar o aplicativo web, execute `npx expo export --platform web` na pasta `mobile`.
 

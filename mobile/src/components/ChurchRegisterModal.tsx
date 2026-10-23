@@ -14,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
+import { passwordError } from '../services/password';
 import { cleanCep, formatCep, searchCep } from '../services/cep';
 import { Colors,Spacing,Typography } from '../theme/colors';
 import { AccessibleButton } from './AccessibleButton';
@@ -102,8 +103,9 @@ export const ChurchRegisterModal: React.FC<ChurchRegisterModalProps> = ({ visibl
       return;
     }
 
-    if (password.length < 8) {
-      Alert.alert('Senha Fraca', 'A senha deve conter no mínimo 8 caracteres.');
+    const invalidPassword = passwordError(password);
+    if (invalidPassword) {
+      Alert.alert('Confira a senha', invalidPassword);
       return;
     }
 

@@ -12,8 +12,10 @@ const { runSeed } = await import('./config/seed.js');
 const { createApp } = await import('./app.js');
 const { runCepTests, cepFixture } = await import('./services/cep.test.js');
 const { runConfigurationTests } = await import('./configuration.test.js');
+const { runAuthDeliveryTests } = await import('./auth-delivery.test.js');
 try {
   runConfigurationTests();
+  runAuthDeliveryTests();
   initDatabase();
   await runSeed();
   await runCepTests();

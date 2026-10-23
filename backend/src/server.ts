@@ -5,7 +5,7 @@ import { runSeed } from './config/seed.js';
 initDatabase();
 if (demoMode) await runSeed();
 const port = Number(process.env.PORT || 3000);
-const server = createApp().listen(port, process.env.HOST || '0.0.0.0', () => console.log('Comunhão: http://localhost:' + port + '/admin/ | Dados: ' + dataDir + ' | Demo: ' + demoMode));
+const server = createApp().listen(port, () => console.log('Comunhão: http://localhost:' + port + '/admin/ | Dados: ' + dataDir + ' | Demo: ' + demoMode));
 function stop() { server.close(() => { db.close(); process.exit(0); }); }
 process.on('SIGINT', stop);
 process.on('SIGTERM', stop);
