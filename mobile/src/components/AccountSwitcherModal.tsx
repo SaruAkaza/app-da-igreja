@@ -1,5 +1,5 @@
 import { Alert } from '../services/alerts';
-import React from 'react';
+import React, { useState } from 'react';
 import {
 
 Image,
@@ -26,14 +26,25 @@ export const AccountSwitcherModal: React.FC<AccountSwitcherModalProps> = ({
   onAddAccount,
 }) => {
   const { user, savedAccounts, switchAccount, removeSavedAccount, logout } = useAuth();
+  const [switching, setSwitching] = useState(false);
 
   const handleSwitch = async (accountId: string) => {
+    if (switching) return;
     if (user?.id === accountId) {
       onClose();
       return;
     }
-    await switchAccount(accountId);
-    onClose();
+    setSwitching(true);
+    try {
+      await switchAccount(accountId);
+      onClose();
+    } catch (error: any) {
+      Alert.alert('Não foi possível alternar a conta', error.response?.status === 401
+        ? 'A sessão desta conta expirou. Entre novamente com e-mail e senha.'
+        : 'Confira sua conexão e tente novamente.');
+    } finally {
+      setSwitching(false);
+    }
   };
 
   const handleRemove = (accountId: string, accountName: string) => {
@@ -95,6 +106,7 @@ export const AccountSwitcherModal: React.FC<AccountSwitcherModalProps> = ({
                 <TouchableOpacity
                   key={acc.id}
                   activeOpacity={0.8}
+                  disabled={switching}
                   onPress={() => handleSwitch(acc.id)}
                   style={[styles.accountCard, isCurrent && styles.accountCardActive]}
                 >

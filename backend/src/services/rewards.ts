@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { db } from '../config/database.js';
 import { localDay } from '../config/runtime.js';
+import { groupScoreSql } from './groupAccess.js';
 
 // A emissão usa uma transação síncrona: duas requisições não emitem o mesmo prêmio.
 export function issueCoupons(userId: string, churchId: string) {
@@ -18,7 +19,7 @@ export function issueCoupons(userId: string, churchId: string) {
         AND q.end_date >= ?
         AND (r.reward_type IS NULL OR r.reward_type = 'points')
         AND (r.group_id IS NULL OR r.group_id IN (SELECT group_id FROM group_members WHERE user_id = ?))
-        AND r.points_required <= u.total_points
+        AND r.points_required <= CASE WHEN r.group_id IS NULL THEN u.total_points ELSE ${groupScoreSql('u.id', 'r.group_id')} END
         AND NOT EXISTS (SELECT 1 FROM user_coupons c WHERE c.reward_id = r.id AND c.user_id = u.id)
     `).all(userId, churchId, today, today, userId) as any[];
 
@@ -96,26 +97,28 @@ export function closeGroupCycleAndAwardPodium(groupId: string, churchId: string,
   return db.transaction(() => {
     const group = db.prepare("SELECT * FROM groups WHERE id = ? AND church_id = ?").get(groupId, churchId) as any;
     if (!group) throw new Error("Grupo não encontrado na congregação.");
+    if (group.cycle_status === 'completed') throw new Error('Este ciclo já foi encerrado.');
 
     const now = new Date().toISOString();
     db.prepare("UPDATE groups SET cycle_status = 'completed', cycle_closed_at = ? WHERE id = ?").run(now, groupId);
 
     // Buscar prêmios de pódio cadastrados especificamente para este grupo
     const podiumRewards = db.prepare(`
-      SELECT * FROM rewards 
-      WHERE church_id = ? AND group_id = ? AND reward_type = 'podium' 
-      ORDER BY podium_position ASC
-    `).all(churchId, groupId) as any[];
+      SELECT r.* FROM rewards r JOIN quarters q ON q.id = r.quarter_id AND q.church_id = r.church_id
+      WHERE r.church_id = ? AND r.group_id = ? AND r.reward_type = 'podium'
+        AND q.is_active = 1 AND q.start_date <= ? AND q.end_date >= ?
+      ORDER BY r.podium_position ASC
+    `).all(churchId, groupId, localDay(), localDay()) as any[];
 
     // Membros do grupo classificados por pontuação
     const members = db.prepare(`
-      SELECT u.id, u.name, u.total_points, u.avatar_url
+      SELECT u.id, u.name, ${groupScoreSql('u.id', '?')} AS total_points, u.avatar_url
       FROM group_members gm
       JOIN users u ON u.id = gm.user_id
-      WHERE gm.group_id = ?
-      ORDER BY u.total_points DESC, gm.joined_at ASC
+      WHERE gm.group_id = ? AND u.church_id = ?
+      ORDER BY total_points DESC, gm.joined_at ASC, u.id ASC
       LIMIT 3
-    `).all(groupId) as any[];
+    `).all(groupId, groupId, churchId) as any[];
 
     const awarded: any[] = [];
 

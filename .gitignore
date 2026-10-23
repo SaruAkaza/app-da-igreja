@@ -16,4 +16,5 @@ backend/uploads/
 backend/data/
 !backend/data/.gitkeep
 mobile/dist/
+mobile/dist-pages/
 cloudflared.exe

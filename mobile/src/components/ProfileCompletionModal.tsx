@@ -32,6 +32,11 @@ const ProfileForm: React.FC<ProfileCompletionModalProps> = ({ visible, onClose }
   const [lastName, setLastName] = useState(user?.last_name || '');
   const [usernameHandle, setUsernameHandle] = useState(user?.username_handle || '');
   const [age, setAge] = useState(user?.age ? String(user.age) : '');
+  const [parentPhone, setParentPhone] = useState(user?.parent_phone || '');
+  const [parentCode, setParentCode] = useState('');
+  const [consentSent, setConsentSent] = useState(false);
+  const [consentDemoCode, setConsentDemoCode] = useState('');
+  const [sendingConsent, setSendingConsent] = useState(false);
   const [addressStreet, setAddressStreet] = useState(user?.address_street || '');
   const [addressNeighborhood, setAddressNeighborhood] = useState(user?.address_neighborhood || '');
   const [addressCity, setAddressCity] = useState(user?.address_city || '');
@@ -84,14 +89,34 @@ const ProfileForm: React.FC<ProfileCompletionModalProps> = ({ visible, onClose }
 
   const percent = user?.profile_completion_percent || 0;
   const missing = user?.missing_profile_fields || [];
+  const minor = Number(age) > 0 && Number(age) < 18;
+  const needsConsent = minor && (!user?.parent_consent_verified || !user?.age || user.age >= 18 || parentPhone.replace(/\D/g, '') !== (user?.parent_phone || '').replace(/\D/g, ''));
+
+  const sendConsent = async () => {
+    if (sendingConsent) return;
+    setSendingConsent(true);
+    try {
+      const response = await api.post('/api/auth/parental-consent/send', { parentPhone, childName: user?.name });
+      setConsentSent(true);
+      setParentCode('');
+      setConsentDemoCode(response.data.dev_code || '');
+    } catch (error: any) {
+      Alert.alert('Autorização do responsável', error.response?.data?.error || 'Não foi possível enviar o código. Tente novamente.');
+    } finally {
+      setSendingConsent(false);
+    }
+  };
 
   const handleSave = async () => {
+    if (loading) return;
     setLoading(true);
     try {
+      const consent = needsConsent ? await api.post('/api/auth/parental-consent/verify', { parentPhone, code: parentCode.trim() }) : null;
       const res = await api.post('/api/auth/update-profile', {
         lastName: lastName.trim(),
         usernameHandle: usernameHandle.trim(),
         age: age ? Number(age) : undefined,
+        ...(minor ? { parentPhone, ...(consent ? { parentConsentToken: consent.data.consentToken } : {}) } : {}),
         addressStreet: addressStreet.trim(),
         addressNeighborhood: addressNeighborhood.trim(),
         addressCity: addressCity.trim(),
@@ -184,6 +209,31 @@ const ProfileForm: React.FC<ProfileCompletionModalProps> = ({ visible, onClose }
               value={age}
               onChangeText={setAge}
             />
+
+            {minor ? <>
+              <Text style={styles.label}>TELEFONE DO RESPONSÁVEL COM DDD</Text>
+              <TextInput
+                style={styles.input}
+                accessibilityLabel="Telefone do responsável com DDD"
+                keyboardType="phone-pad"
+                value={parentPhone}
+                onChangeText={value => { setParentPhone(value); setConsentSent(false); setParentCode(''); setConsentDemoCode(''); }}
+              />
+              {needsConsent ? <>
+                <AccessibleButton title={consentSent ? 'Reenviar código ao responsável' : 'Solicitar autorização ao responsável'} onPress={sendConsent} loading={sendingConsent} disabled={loading} />
+                {consentSent ? <Text style={styles.sectionSubtitle}>O código foi enviado diretamente ao seu responsável. Peça que ele confirme a autorização.</Text> : null}
+                {consentDemoCode ? <Text style={styles.sectionSubtitle}>Demonstração · código do responsável: {consentDemoCode}</Text> : null}
+                <Text style={styles.label}>CÓDIGO INFORMADO PELO RESPONSÁVEL</Text>
+                <TextInput
+                  style={styles.input}
+                  accessibilityLabel="Código informado pelo responsável"
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  value={parentCode}
+                  onChangeText={setParentCode}
+                />
+              </> : null}
+            </> : null}
 
             <Text style={styles.label}>FOTO DE PERFIL OU FOTO DO CADERNO (URL)</Text>
             <TextInput

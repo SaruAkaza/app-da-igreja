@@ -38,6 +38,13 @@ async function api(url, options={}) {
 
 function logout() {
   epoch++;
+  if (sessionStorage.getItem('church_auth_token') === token) {
+    sessionStorage.removeItem('church_auth_token');
+    try {
+      const accounts = JSON.parse(sessionStorage.getItem('church_saved_accounts') || '[]');
+      sessionStorage.setItem('church_saved_accounts', JSON.stringify(accounts.filter(account => account.token !== token && account.id !== user?.id)));
+    } catch { sessionStorage.removeItem('church_saved_accounts'); }
+  }
   token = '';
   user = null;
   sessionStorage.removeItem('communhao_session');
@@ -373,6 +380,7 @@ function groupsPage(groups) {
         `}
 
         <div class="card-actions">
+          <button class="btn small soft" data-open-group="${esc(g.id)}">Leituras e dúvidas</button>
           <button class="btn small soft" data-edit-group="${esc(g.id)}"><svg class="icon"><use href="#i-edit"/></svg> Editar</button>
           <button class="btn small soft" data-group-members="${esc(g.id)}"><svg class="icon"><use href="#i-users"/></svg> Membros (${num(g.total_members)})</button>
           <button class="btn small soft" data-close-cycle="${esc(g.id)}" data-group-title="${esc(g.title)}" title="Encerrar ciclo da célula e emitir prêmios do pódio aos vencedores" style="color:#d97706;border-color:#fde68a">🏆 Encerrar Ciclo</button>
@@ -1027,6 +1035,19 @@ document.addEventListener('click', async event => {
 
   // Gestão de Grupos
   if (el.dataset.editGroup) editGroupModal(el.dataset.editGroup);
+  if (el.dataset.action === 'open-app') {
+    event.preventDefault();
+    sessionStorage.setItem('church_auth_token', token);
+    window.location.assign('/');
+    return;
+  }
+  if (el.dataset.openGroup) {
+    sessionStorage.setItem('church_auth_token', token);
+    const target = new URL('/group', window.location.origin);
+    target.searchParams.set('groupId', el.dataset.openGroup);
+    window.location.assign(target.href);
+    return;
+  }
   if (el.dataset.groupMembers) groupMembersModal(el.dataset.groupMembers);
   if (el.dataset.deleteGroup) {
     const id = el.dataset.deleteGroup;
@@ -1272,7 +1293,6 @@ $('modal').addEventListener('cancel', event => { event.preventDefault(); closeMo
 
 fetch('/api/health').then(r => r.json()).then(d => $('demo').hidden = !d.demo_mode).catch(() => {});
 if (token) restore().catch(error => {
-  logout();
   $('loginError').textContent = error.message || 'Reconecte-se ao servidor.';
   $('loginError').hidden = false;
 });

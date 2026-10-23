@@ -32,10 +32,11 @@ export function createReward(req: Request, res: Response) {
   }
 
   if (targetGroupId) {
-    const groupExists = db.prepare('SELECT id FROM groups WHERE id = ? AND church_id = ?').get(targetGroupId, churchId);
+    const groupExists = db.prepare('SELECT id, cycle_status FROM groups WHERE id = ? AND church_id = ?').get(targetGroupId, churchId) as any;
     if (!groupExists) {
       return res.status(400).json({ error: 'Grupo selecionado não pertence a esta igreja.' });
     }
+    if (type === 'podium' && groupExists.cycle_status === 'completed') return res.status(409).json({ error: 'Este ciclo já foi premiado. Cadastre o pódio antes de encerrar o grupo.' });
   }
 
   const today = localDay(), now = new Date().toISOString();
@@ -73,13 +74,15 @@ export function updateReward(req: Request, res: Response) {
     return res.status(400).json({ error: 'Confira título, nível e local de retirada.' });
   }
 
-  const reward = db.prepare('SELECT id FROM rewards WHERE id = ? AND church_id = ?').get(id, churchId);
+  const reward = db.prepare('SELECT id, group_id, reward_type FROM rewards WHERE id = ? AND church_id = ?').get(id, churchId) as any;
   if (!reward) return res.status(404).json({ error: 'Prêmio não encontrado.' });
 
   const type = rewardType === 'podium' ? 'podium' : 'points';
   let pos: number | null = null;
   let pts = Number(pointsRequired) || 0;
   let targetGroupId: string | null = (groupId && typeof groupId === 'string' && groupId.trim()) ? groupId.trim() : null;
+
+  if ((targetGroupId !== reward.group_id || type !== reward.reward_type) && db.prepare('SELECT id FROM user_coupons WHERE reward_id = ? LIMIT 1').get(id)) return res.status(409).json({ error: 'Prêmios com cupons emitidos não podem mudar de grupo ou modalidade.' });
 
   if (type === 'podium') {
     pos = Number(podiumPosition);

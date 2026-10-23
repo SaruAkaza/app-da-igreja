@@ -13,6 +13,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../services/api';
+import { passwordError } from '../services/password';
 import { cleanCep, formatCep, searchCep } from '../services/cep';
 import { Colors,Spacing,Typography } from '../theme/colors';
 import { AccessibleButton } from './AccessibleButton';
@@ -23,7 +25,7 @@ interface ChurchRegisterModalProps {
 }
 
 export const ChurchRegisterModal: React.FC<ChurchRegisterModalProps> = ({ visible, onClose }) => {
-  const { registerChurch } = useAuth();
+  const { registerChurch, enterCreatedChurch } = useAuth();
   const [step, setStep] = useState<'form' | 'success'>('form');
 
   // Form State
@@ -38,7 +40,11 @@ export const ChurchRegisterModal: React.FC<ChurchRegisterModalProps> = ({ visibl
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [verificationEmail, setVerificationEmail] = useState('');
+  const [emailCode, setEmailCode] = useState('');
+  const [demoCode, setDemoCode] = useState('');
   const [loading, setLoading] = useState(false);
+  const awaitingCode = verificationEmail === email.trim().toLowerCase() && Boolean(verificationEmail);
 
   // CEP Search State
   const [churchCep, setChurchCep] = useState('');
@@ -91,13 +97,15 @@ export const ChurchRegisterModal: React.FC<ChurchRegisterModalProps> = ({ visibl
   const [createdChurch, setCreatedChurch] = useState<any>(null);
 
   const handleRegister = async () => {
+    if (loading) return;
     if (!churchName || !pastorName || !email || !password) {
       Alert.alert('Campos Obrigatórios', 'Preencha o nome da igreja, seu nome de pastor, e-mail e senha.');
       return;
     }
 
-    if (password.length < 8) {
-      Alert.alert('Senha Fraca', 'A senha deve conter no mínimo 8 caracteres.');
+    const invalidPassword = passwordError(password);
+    if (invalidPassword) {
+      Alert.alert('Confira a senha', invalidPassword);
       return;
     }
 
@@ -108,6 +116,15 @@ export const ChurchRegisterModal: React.FC<ChurchRegisterModalProps> = ({ visibl
 
     setLoading(true);
     try {
+      const cleanEmail = email.trim().toLowerCase();
+      if (!awaitingCode) {
+        const response = await api.post('/api/auth/request-code', { email: cleanEmail });
+        setVerificationEmail(cleanEmail);
+        setEmailCode('');
+        setDemoCode(response.data.dev_code || '');
+        return;
+      }
+      const verification = await api.post('/api/auth/verify-code', { email: cleanEmail, code: emailCode.trim() });
       const res = await registerChurch({
         churchName: churchName.trim(),
         denomination: denomination.trim(),
@@ -117,7 +134,8 @@ export const ChurchRegisterModal: React.FC<ChurchRegisterModalProps> = ({ visibl
         addressFull: addressFull.trim(),
         phone: phone.trim(),
         pastorName: pastorName.trim(),
-        email: email.trim().toLowerCase(),
+        email: cleanEmail,
+        emailVerificationToken: verification.data.verificationToken,
         password,
       });
 
@@ -162,7 +180,23 @@ export const ChurchRegisterModal: React.FC<ChurchRegisterModalProps> = ({ visibl
     setEmail('');
     setPassword('');
     setConfirmPassword('');
+    setVerificationEmail('');
+    setEmailCode('');
+    setDemoCode('');
     onClose();
+  };
+
+  const enterChurch = async () => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      await enterCreatedChurch();
+      resetAndClose();
+    } catch (error: any) {
+      Alert.alert('Acessar igreja', error.message || 'Não foi possível iniciar a sessão. Entre com seu e-mail e senha.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -330,9 +364,26 @@ export const ChurchRegisterModal: React.FC<ChurchRegisterModalProps> = ({ visibl
                 onChangeText={setConfirmPassword}
               />
 
+              {awaitingCode ? <>
+                <Text style={styles.subtitle}>Enviamos um código para {verificationEmail}. Ele vale por 15 minutos.</Text>
+                {demoCode ? <Text style={styles.subtitle}>Demonstração · código do e-mail: {demoCode}</Text> : null}
+                <Text style={styles.label}>CÓDIGO RECEBIDO POR E-MAIL</Text>
+                <TextInput
+                  style={styles.input}
+                  accessibilityLabel="Código recebido por e-mail"
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  value={emailCode}
+                  onChangeText={setEmailCode}
+                />
+                <TouchableOpacity disabled={loading} onPress={() => { setVerificationEmail(''); setEmailCode(''); setDemoCode(''); }} style={styles.cancelBtn}>
+                  <Text style={styles.cancelText}>Solicitar outro código</Text>
+                </TouchableOpacity>
+              </> : null}
+
               <AccessibleButton
-                title="Concluir Cadastro da Igreja"
-                subtitle="Gerar código de congregação e liberar painel"
+                title={awaitingCode ? 'Confirmar e cadastrar igreja' : 'Receber código de confirmação'}
+                subtitle={awaitingCode ? 'Gerar código de congregação e liberar painel' : 'Confirme o e-mail pastoral para continuar'}
                 variant="primary"
                 onPress={handleRegister}
                 loading={loading}
@@ -368,7 +419,7 @@ export const ChurchRegisterModal: React.FC<ChurchRegisterModalProps> = ({ visibl
 
               <AccessibleButton
                 title="📲 Compartilhar no WhatsApp"
-                subtitle="Enviar convite pronto com link nos grupos"
+                subtitle="Enviar o código de convite nos grupos"
                 variant="success"
                 onPress={openWhatsAppShare}
                 style={{ width: '100%', marginBottom: 12 }}
@@ -378,7 +429,8 @@ export const ChurchRegisterModal: React.FC<ChurchRegisterModalProps> = ({ visibl
                 title="🚪 Entrar no Aplicativo"
                 subtitle="Acessar sua igreja como Administrador"
                 variant="primary"
-                onPress={resetAndClose}
+                onPress={enterChurch}
+                loading={loading}
                 style={{ width: '100%' }}
               />
             </View>

@@ -6,9 +6,9 @@ export const JWT_SECRET = jwtSecret;
 export type UserRole = 'member' | 'leader' | 'church_admin' | 'super_admin';
 export interface AuthUser { id: string; church_id: string; email: string; name: string; role: UserRole }
 declare global { namespace Express { interface Request { user?: AuthUser } } }
-export function generateToken(user: AuthUser): string {
+export function generateToken(user: AuthUser, sessionVersion?: number): string {
   const record = db.prepare('SELECT session_version FROM users WHERE id = ?').get(user.id) as any;
-  return jwt.sign({ id: user.id, version: record?.session_version || 0 }, JWT_SECRET, { expiresIn: '7d', algorithm: 'HS256' });
+  return jwt.sign({ id: user.id, version: sessionVersion ?? record?.session_version ?? 0 }, JWT_SECRET, { expiresIn: '7d', algorithm: 'HS256' });
 }
 export function authenticateToken(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;

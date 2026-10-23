@@ -10,6 +10,7 @@ Text,
 View,
 } from 'react-native';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { QuestionsPanel } from '../components/QuestionsPanel';
 import { api,LeaderFeedback } from '../services/api';
 import { Colors,Spacing,Typography } from '../theme/colors';
 
@@ -44,8 +45,8 @@ export const FeedbacksScreen: React.FC<{ navigation: any }> = ({ navigation }) =
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScreenHeader
-        title="Dicas do Meu Líder"
-        subtitle="Discipulado pastoral sigiloso"
+        title="Conversas e orientações"
+        subtitle="Um espaço privado com sua liderança"
         navigation={navigation}
         showHomeButton={true}
       />
@@ -55,9 +56,10 @@ export const FeedbacksScreen: React.FC<{ navigation: any }> = ({ navigation }) =
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
         }
       >
+        <QuestionsPanel onOpenGroup={id => navigation.navigate('Group', { groupId: id, tab: 'questions' })} />
         <View style={styles.header}>
           <Text style={styles.icon}>💌</Text>
-          <Text style={styles.title}>Dicas & Discipulado do Líder</Text>
+          <Text style={styles.title}>Orientações sobre suas leituras</Text>
           <Text style={styles.subtitle}>
             Orientações bíblicas, exegéticas e palavras de encorajamento enviadas com sigilo pelo seu líder de estudo.
           </Text>

@@ -1,7 +1,7 @@
 import { View } from 'react-native';
 import { router,useLocalSearchParams } from 'expo-router';
 import React from 'react';
-const paths: Record<string,string> = { Home: '/(app)/(tabs)/home', Feed: '/(app)/(tabs)/feed', Capture: '/(app)/(tabs)/capture', Feedbacks: '/(app)/(tabs)/feedbacks', GroupsRanking: '/(app)/(tabs)/groups', Leader: '/(app)/(tabs)/leader', Rewards: '/(app)/rewards', Explore: '/(app)/explore', Register: '/register', Login: '/' };
+const paths: Record<string,string> = { Home: '/(app)/(tabs)/home', Connections: '/(app)/(tabs)/connections', Group: '/(app)/group', Feed: '/(app)/(tabs)/feed', Capture: '/(app)/(tabs)/capture', Feedbacks: '/(app)/(tabs)/feedbacks', GroupsRanking: '/(app)/(tabs)/groups', Leader: '/(app)/(tabs)/leader', Rewards: '/(app)/rewards', Explore: '/(app)/explore', Register: '/register', Login: '/' };
 // Mantém os componentes existentes enquanto as rotas são administradas pelo Expo Router.
 export function ScreenRoute({ screen: Screen }: { screen: React.ComponentType<any> }) {
   const params = useLocalSearchParams();

@@ -3,6 +3,7 @@ import { localDay, previousDay } from '../config/runtime.js';
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { db } from '../config/database.js';
+import { accessibleGroup, groupScoreSql, isChurchAdmin } from '../services/groupAccess.js';
 
 export const getRanking = (req: Request, res: Response) => {
   try {
@@ -13,6 +14,7 @@ export const getRanking = (req: Request, res: Response) => {
     let params: any[] = [];
 
     if (groupId) {
+      if (!accessibleGroup(groupId, req.user!)) return res.status(404).json({ error: 'Grupo não encontrado entre seus acessos.' });
       query = `
         SELECT 
           u.id,
@@ -21,17 +23,17 @@ export const getRanking = (req: Request, res: Response) => {
           u.role,
           u.current_streak,
           u.highest_streak,
-          u.total_points,
+          ${groupScoreSql('u.id', '?')} AS total_points,
           COUNT(d.id) AS devotionals_count
         FROM users u
         INNER JOIN group_members gm ON gm.user_id = u.id
         LEFT JOIN devotionals d ON d.user_id = u.id AND d.group_id = gm.group_id
         WHERE gm.group_id = ? AND u.church_id = ?
         GROUP BY u.id
-        ORDER BY u.total_points DESC, u.current_streak DESC, u.name ASC
+        ORDER BY total_points DESC, gm.joined_at ASC, u.id ASC
         LIMIT 50
       `;
-      params.push(groupId, churchId);
+      params.push(groupId, groupId, churchId);
     } else {
       query = `
         SELECT 
@@ -126,6 +128,8 @@ export const getRewards = (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
     const churchId = req.user?.church_id;
+    const groupId = req.query.groupId;
+    if (groupId !== undefined && !accessibleGroup(groupId, req.user!)) return res.status(404).json({ error: 'Grupo não encontrado entre seus acessos.' });
 
     const user = db.prepare('SELECT total_points FROM users WHERE id = ?').get(userId) as any;
     const userPoints = user ? user.total_points : 0;
@@ -139,6 +143,7 @@ export const getRewards = (req: Request, res: Response) => {
     const rewards = db.prepare(`
       SELECT 
         r.*,
+        ${groupScoreSql('?', 'r.group_id')} AS group_points,
         g.title AS group_title,
         CASE 
           WHEN r.group_id IS NULL THEN 1 
@@ -150,26 +155,29 @@ export const getRewards = (req: Request, res: Response) => {
       FROM rewards r
       LEFT JOIN groups g ON g.id = r.group_id
       WHERE r.quarter_id = ? AND r.church_id = ?
+        AND (r.group_id IS NULL OR EXISTS(SELECT 1 FROM group_members gm WHERE gm.group_id = r.group_id AND gm.user_id = ?) OR ?)
+        ${groupId ? 'AND (r.group_id = ? OR r.group_id IS NULL)' : ''}
       ORDER BY 
         CASE WHEN r.group_id IS NOT NULL THEN 0 ELSE 1 END,
         r.reward_type ASC,
         r.podium_position ASC,
         r.points_required ASC
-    `).all(userId, userId, userId, userId, quarter.id, churchId) as any[];
+    `).all(userId, userId, userId, userId, userId, quarter.id, churchId, userId, isChurchAdmin(req.user!) ? 1 : 0, ...(groupId ? [groupId] : [])) as any[];
 
     const rewardsWithProgress = rewards.map((rew) => {
       const isPodium = rew.reward_type === 'podium';
+      const points = rew.group_id ? rew.group_points : userPoints;
       const progressPercent = isPodium 
         ? (rew.already_claimed ? 100 : 0)
-        : Math.min(100, Math.round((userPoints / Math.max(1, rew.points_required)) * 100));
-      const unlocked = isPodium ? !!rew.already_claimed : (userPoints >= rew.points_required && !!rew.is_member_of_group);
+        : Math.min(100, Math.round((points / Math.max(1, rew.points_required)) * 100));
+      const unlocked = isPodium ? !!rew.already_claimed : (points >= rew.points_required && !!rew.is_member_of_group);
 
       return {
         ...rew,
-        user_points: userPoints,
+        user_points: points,
         progress_percent: progressPercent,
         unlocked,
-        points_remaining: isPodium ? 0 : Math.max(0, rew.points_required - userPoints),
+        points_remaining: isPodium ? 0 : Math.max(0, rew.points_required - points),
       };
     });
 
@@ -231,7 +239,7 @@ export const validateAndRedeemCoupon = (req: Request, res: Response) => {
     const churchId = req.user?.church_id;
     const { couponCode } = req.body;
 
-    if (!couponCode) {
+    if (typeof couponCode !== 'string' || !couponCode.trim()) {
       return res.status(400).json({ error: 'Informe o código do cupom ou leia o QR Code.' });
     }
 
@@ -244,15 +252,23 @@ export const validateAndRedeemCoupon = (req: Request, res: Response) => {
         u.email AS member_email,
         r.title AS reward_title,
         r.tier,
-        r.partner_name
+        r.partner_name,
+        r.group_id
       FROM user_coupons uc
       INNER JOIN users u ON u.id = uc.user_id
       INNER JOIN rewards r ON r.id = uc.reward_id
-      WHERE uc.coupon_code = ? AND uc.church_id = ?
+      WHERE uc.coupon_code = ? AND uc.church_id = ? AND u.church_id = uc.church_id
     `).get(cleanCode, churchId) as any;
 
     if (!coupon) {
       return res.status(404).json({ error: 'Cupom inválido ou não pertencente a esta igreja.' });
+    }
+
+    if (!isChurchAdmin(req.user!)) {
+      const responsible = coupon.group_id
+        ? db.prepare('SELECT id FROM groups WHERE id = ? AND church_id = ? AND leader_id = ?').get(coupon.group_id, churchId, leaderId)
+        : db.prepare('SELECT g.id FROM groups g JOIN group_members gm ON gm.group_id = g.id WHERE gm.user_id = ? AND g.church_id = ? AND g.leader_id = ?').get(coupon.user_id, churchId, leaderId);
+      if (!responsible) return res.status(403).json({ error: 'A entrega deste prêmio pertence à liderança responsável ou à administração da igreja.' });
     }
 
     const period = db.prepare('SELECT q.end_date, q.is_active FROM rewards r JOIN quarters q ON q.id = r.quarter_id WHERE r.id = ?').get(coupon.reward_id) as any;
@@ -266,11 +282,12 @@ export const validateAndRedeemCoupon = (req: Request, res: Response) => {
 
     const now = new Date().toISOString();
 
-    db.prepare(`
+    const redeemed = db.prepare(`
       UPDATE user_coupons
       SET status = 'used', redeemed_at = ?, redeemed_by_leader_id = ?
       WHERE id = ? AND status = 'active'
     `).run(now, leaderId, coupon.id);
+    if (!redeemed.changes) return res.status(409).json({ error: 'Este cupom já foi utilizado. Atualize a consulta.' });
 
     return res.json({
       message: '✅ Cupom validado e resgatado com sucesso!',

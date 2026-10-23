@@ -14,10 +14,13 @@ View
 } from 'react-native';
 import { AccessibleButton } from '../components/AccessibleButton';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ChurchInviteCard } from '../components/ChurchInviteCard';
+import { useAuth } from '../context/AuthContext';
 import { api,Group } from '../services/api';
 import { Colors,Spacing,Typography } from '../theme/colors';
 
 export const ExploreGroupsScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
+  const { user, refreshProfile } = useAuth();
   const [groups, setGroups] = useState<Group[]>([]);
   const [inviteCode, setInviteCode] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -48,8 +51,10 @@ export const ExploreGroupsScreen: React.FC<{ navigation: any }> = ({ navigation 
     try {
       const res = await api.post('/api/groups/join', { inviteCode: inviteCode.trim() });
       Alert.alert('Glória a Deus!', res.data.message);
+      await refreshProfile();
       setInviteCode('');
       await loadAllGroups();
+      navigation.navigate('Group', { groupId: res.data.group.id });
     } catch (err: any) {
       const msg = err.response?.data?.error || 'Não foi possível entrar no grupo.';
       Alert.alert('Aviso', msg);
@@ -61,8 +66,10 @@ export const ExploreGroupsScreen: React.FC<{ navigation: any }> = ({ navigation 
   const handleJoinById = async (groupId: string, title: string) => {
     try {
       await api.post('/api/groups/join', { groupId });
+      await refreshProfile();
       Alert.alert('Bem-vindo(a)!', `Você agora faz parte do grupo "${title}".`);
       await loadAllGroups();
+      navigation.navigate('Group', { groupId });
     } catch (err: any) {
       const msg = err.response?.data?.error || 'Erro ao entrar no grupo.';
       Alert.alert('Aviso', msg);
@@ -83,6 +90,7 @@ export const ExploreGroupsScreen: React.FC<{ navigation: any }> = ({ navigation 
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />
         }
       >
+        {!user?.church_id ? <ChurchInviteCard onJoined={() => navigation.navigate('Connections')} /> : null}
         <View style={styles.header}>
           <Text style={styles.title}>Grupos de Estudo da Igreja</Text>
           <Text style={styles.subtitle}>
@@ -121,7 +129,7 @@ export const ExploreGroupsScreen: React.FC<{ navigation: any }> = ({ navigation 
                 <Text style={styles.categoryPill}>
                   {group.category === 'biblia' ? '📖 BÍBLIA' : '📕 LIVRO'}
                 </Text>
-                <Text style={styles.codeBadge}>CÓDIGO: {group.invite_code}</Text>
+                {group.invite_code ? <Text style={styles.codeBadge}>CÓDIGO: {group.invite_code}</Text> : null}
               </View>
 
               <Text style={styles.groupTitle}>{group.title}</Text>
@@ -134,9 +142,7 @@ export const ExploreGroupsScreen: React.FC<{ navigation: any }> = ({ navigation 
                 </Text>
 
                 {group.is_member ? (
-                  <View style={styles.alreadyMemberBadge}>
-                    <Text style={styles.alreadyMemberText}>Você já participa ✅</Text>
-                  </View>
+                  <AccessibleButton title="Abrir meu grupo" variant="outline" onPress={() => navigation.navigate('Group', { groupId: group.id })} />
                 ) : (
                   <AccessibleButton
                     title="Participar Deste Grupo"

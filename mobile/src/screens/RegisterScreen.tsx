@@ -8,6 +8,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { cleanCep, formatCep, searchCep } from '../services/cep';
+import { passwordError } from '../services/password';
 export function RegisterScreen({ navigation }: { navigation: any }) {
   const { register } = useAuth();
   const [step, setStep] = useState<'details'|'confirm'>('details');
@@ -56,9 +57,10 @@ export function RegisterScreen({ navigation }: { navigation: any }) {
     }
   };
   async function sendCodes(){
+    if(busy)return;
     setError('');
     if(!name.trim()||!email.trim()||!Number.isInteger(Number(age))||Number(age)<1||Number(age)>120){setError('Informe seu nome, e-mail e uma idade válida.');return;}
-    if(password.length<8||!/[A-Z]/.test(password)||!/[a-z]/.test(password)||!/[0-9]/.test(password)||!/[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\/;~`]/.test(password)){setError('Use uma senha com 8 ou mais caracteres, maiúscula, minúscula, número e símbolo.');return;}
+    const invalidPassword=passwordError(password);if(invalidPassword){setError(invalidPassword);return;}
     if(password!==confirm){setError('As senhas precisam ser iguais.');return;}
     if(minor&&!parentPhone.trim()){setError('Informe o telefone do seu responsável com DDD.');return;}
     setBusy(true);
@@ -71,12 +73,13 @@ export function RegisterScreen({ navigation }: { navigation: any }) {
   async function finish(){
     if(busy)return;setError('');setBusy(true);
     try{
-      await api.post('/api/auth/verify-code',{email:email.trim(),code:emailCode.trim()});
-      if(minor)await api.post('/api/auth/parental-consent/verify',{parentPhone,code:parentCode.trim()});
+      const verification=await api.post('/api/auth/verify-code',{email:email.trim(),code:emailCode.trim()});
+      const consent=minor?await api.post('/api/auth/parental-consent/verify',{parentPhone,code:parentCode.trim()}):null;
       await register({
         name:name.trim(),
         lastName:lastName.trim(),
         email:email.trim(),
+        emailVerificationToken:verification.data.verificationToken,
         age:Number(age),
         password,
         confirmPassword:confirm,
@@ -86,7 +89,7 @@ export function RegisterScreen({ navigation }: { navigation: any }) {
         addressNeighborhood:addressNeighborhood.trim(),
         addressCity:addressCity.trim(),
         addressState:addressState.trim().toUpperCase(),
-        ...(minor?{parentPhone,parentConsentCode:parentCode.trim()}:{})
+        ...(minor?{parentPhone,parentConsentToken:consent?.data.consentToken}:{})
       });
     }catch(e:any){setError(e.response?.data?.error||'Não conseguimos concluir seu cadastro. Confira os dados e tente novamente.');}finally{setBusy(false);}
   }

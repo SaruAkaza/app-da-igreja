@@ -3,20 +3,29 @@ import crypto from 'node:crypto';
 import nodemailer from 'nodemailer';
 import { db } from '../config/database.js';
 import { demoMode } from '../config/runtime.js';
+import { issueVerificationProof } from '../services/verificationProof.js';
 
-const emailValid = (value: unknown): value is string => typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254;
-const code = () => crypto.randomInt(100000, 1000000).toString();
+const emailValid = (value: unknown): value is string => typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()) && value.trim().length <= 254;
+function code(previous?: string) {
+  let value: string;
+  do { value = crypto.randomInt(100000, 1000000).toString(); } while (value === previous);
+  return value;
+}
 const expires = () => new Date(Date.now() + 15 * 60 * 1000).toISOString();
 async function deliverEmail(email: string, value: string) {
   if (demoMode) return;
   if (!process.env.SMTP_URL || !process.env.MAIL_FROM) throw new Error('O envio de e-mail ainda não foi configurado pelo administrador.');
-  await nodemailer.createTransport(process.env.SMTP_URL).sendMail({ from: process.env.MAIL_FROM, to: email, subject: 'Seu código de acesso · Comunhão', text: `Seu código é ${value}. Ele expira em 15 minutos. Se não foi você, ignore esta mensagem.` });
+  const transport = nodemailer.createTransport({ url: process.env.SMTP_URL, connectionTimeout: 5000, greetingTimeout: 5000, socketTimeout: 10000, dnsTimeout: 5000 });
+  await transport.sendMail({ from: process.env.MAIL_FROM, to: email, subject: 'Seu código de acesso · Comunhão', text: `Seu código é ${value}. Ele expira em 15 minutos. Se não foi você, ignore esta mensagem.` });
 }
 const fail = (res: Response, error: unknown) => res.status(503).json({ error: error instanceof Error && error.message.includes('configurado') ? error.message : 'Não foi possível entregar o código. Tente novamente mais tarde.' });
 
 export async function requestCode(req: Request, res: Response) {
   if (!emailValid(req.body.email)) return res.status(400).json({ error: 'Informe um e-mail válido.' });
-  const email = req.body.email.trim().toLowerCase(); const value = code(); const until = expires();
+  const email = req.body.email.trim().toLowerCase();
+  if (db.prepare('SELECT id FROM users WHERE email = ?').get(email)) return res.status(409).json({ error: 'Este e-mail já está cadastrado. Faça login ou recupere sua senha.' });
+  const previous = db.prepare('SELECT code FROM email_verifications WHERE email = ?').get(email) as { code: string } | undefined;
+  const value = code(previous?.code); const until = expires();
   try {
     await deliverEmail(email, value);
     db.prepare('INSERT INTO email_verifications (email,code,expires_at,verified,created_at) VALUES (?,?,?,0,?) ON CONFLICT(email) DO UPDATE SET code=excluded.code, expires_at=excluded.expires_at, verified=0, created_at=excluded.created_at').run(email, value, until, new Date().toISOString());
@@ -29,15 +38,15 @@ export function verifyCode(req: Request, res: Response) {
   const record = db.prepare('SELECT * FROM email_verifications WHERE email = ?').get(email) as any;
   if (!record || record.expires_at < new Date().toISOString() || record.code !== req.body.code.trim()) return res.status(400).json({ error: 'Código inválido ou expirado.' });
   db.prepare('UPDATE email_verifications SET verified = 1 WHERE email = ?').run(email);
-  return res.json({ valid: true, message: 'E-mail confirmado.' });
+  return res.json({ valid: true, message: 'E-mail confirmado.', verificationToken: issueVerificationProof('registration-email', email, record.code, record.expires_at) });
 }
 export async function forgotPassword(req: Request, res: Response) {
   if (!emailValid(req.body.email)) return res.status(400).json({ error: 'Informe um e-mail válido.' });
   const email = req.body.email.trim().toLowerCase();
-  const user = db.prepare('SELECT id FROM users WHERE email = ?').get(email) as any;
+  const user = db.prepare('SELECT id, verification_code FROM users WHERE email = ?').get(email) as any;
   const message = 'Se este e-mail estiver cadastrado, você receberá um código de recuperação.';
   if (!user) return res.json({ message });
-  const value = code();
+  const value = code(user.verification_code);
   try {
     await deliverEmail(email, value);
     db.prepare('UPDATE users SET verification_code = ?, verification_code_expires_at = ? WHERE id = ?').run(value, expires(), user.id);
@@ -49,7 +58,8 @@ export async function sendParentalConsent(req: Request, res: Response) {
   if (typeof parentPhone !== 'string' || typeof childName !== 'string' || !childName.trim()) return res.status(400).json({ error: 'Informe nome e telefone do responsável.' });
   const phone = parentPhone.replace(/\D/g, '');
   if (phone.length < 10 || phone.length > 13) return res.status(400).json({ error: 'Telefone inválido. Inclua o DDD.' });
-  const value = code(); const until = expires();
+  const previous = db.prepare('SELECT code FROM parental_consents WHERE parent_phone = ?').get(phone) as { code: string } | undefined;
+  const value = code(previous?.code); const until = expires();
   try {
     if (!demoMode) {
       if (!process.env.CONSENT_WEBHOOK_URL) throw new Error('O envio ao responsável ainda não foi configurado pelo administrador.');
@@ -66,5 +76,5 @@ export function verifyParentalConsent(req: Request, res: Response) {
   const record = db.prepare('SELECT * FROM parental_consents WHERE parent_phone = ?').get(phone) as any;
   if (!record || record.code !== req.body.code.trim() || record.expires_at < new Date().toISOString()) return res.status(400).json({ error: 'Autorização inválida ou expirada.' });
   db.prepare('UPDATE parental_consents SET verified = 1 WHERE parent_phone = ?').run(phone);
-  return res.json({ valid: true, message: 'Autorização confirmada.' });
+  return res.json({ valid: true, message: 'Autorização confirmada.', consentToken: issueVerificationProof('parental-consent', phone, record.code, record.expires_at, record.child_name) });
 }

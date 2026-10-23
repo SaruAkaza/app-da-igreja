@@ -1,8 +1,10 @@
 import { Alert } from '../services/alerts';
 import React,{ useState } from 'react';
+import * as Linking from 'expo-linking';
 import {
 
 Modal,
+Platform,
 ScrollView,
 StyleSheet,
 Switch,
@@ -12,6 +14,7 @@ TouchableOpacity,
 View,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { api, DEFAULT_API_URL } from '../services/api';
 import { Colors,Spacing,Typography } from '../theme/colors';
 import { AccessibleButton } from './AccessibleButton';
 
@@ -34,7 +37,7 @@ export const HomeMenuDrawer: React.FC<HomeMenuDrawerProps> = ({
   onOpenAccountSwitcher,
   onOpenProfileCompletion,
 }) => {
-  const { user, isSeniorMode, toggleSeniorMode, joinChurch, joinGroupByCode } = useAuth();
+  const { user, token, isSeniorMode, toggleSeniorMode, joinChurch, joinGroupByCode } = useAuth();
   const [joinModalVisible, setJoinModalVisible] = useState(false);
   const [churchOrCellCode, setChurchOrCellCode] = useState('');
   const [joinLoading, setJoinLoading] = useState(false);
@@ -124,6 +127,7 @@ export const HomeMenuDrawer: React.FC<HomeMenuDrawerProps> = ({
               {/* Seção de Ações Principais */}
               <Text style={styles.menuSectionTitle}>MINHA CONGREGAÇÃO & GRUPOS</Text>
 
+              <AccessibleButton title="Meus grupos de conexão" variant="outline" onPress={() => handleNavigate('Connections')} />
               {/* 1. Ranking da Minha Célula / Grupo */}
               <TouchableOpacity
                 activeOpacity={0.8}
@@ -221,11 +225,13 @@ export const HomeMenuDrawer: React.FC<HomeMenuDrawerProps> = ({
                   activeOpacity={0.8}
                   onPress={() => {
                     onClose();
-                    if (typeof window !== 'undefined' && window.open) {
-                      window.open('http://localhost:3000/admin/', '_blank');
-                    } else {
-                      Alert.alert('Painel da Igreja', 'Acesse pelo navegador em: http://localhost:3000/admin/');
-                    }
+                    const url = new URL('/admin/', api.defaults.baseURL || DEFAULT_API_URL).href;
+                    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                      if (new URL(url).origin === window.location.origin && token) {
+                        window.sessionStorage.setItem('communhao_session', token);
+                        window.location.assign(url);
+                      } else window.open(url, '_blank', 'noopener,noreferrer');
+                    } else void Linking.openURL(url).catch(() => Alert.alert('Painel da Igreja', `Acesse pelo navegador: ${url}`));
                   }}
                   style={[styles.menuItem, { backgroundColor: '#f0f6ec', borderColor: '#bcd8ba', borderWidth: 1 }]}
                 >

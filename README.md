@@ -2,9 +2,27 @@
 
 Aplicativo Expo/React Native para leitura bíblica em comunidade, registro de anotações por foto, acompanhamento pastoral e recompensas. O backend usa Node.js, Express, TypeScript e SQLite. O painel web é servido pela própria API.
 
+## Uma plataforma, a comunidade de cada pessoa
+
+Cada conta pertence a uma igreja por vez. A igreja e o cargo são obtidos da sessão no servidor em toda requisição; mudar um endereço ou informar outro `church_id` no formulário não concede acesso a outra congregação. Contas sem igreja entram por convite. A troca de igreja exige desvinculação pela administração e um novo convite, sem carregar o cargo, pontos, sequência ou cupons ativos da igreja anterior.
+
+O **grupo de conexão** reúne quatro espaços: **Leituras**, **Dúvidas**, **Conquistas** e **Pessoas**. A página inicial mostra os grupos da pessoa e avisos de respostas para ler. Depois de enviar uma imagem, o membro pode abrir a leitura no grupo, registrar uma dúvida vinculada à imagem e acompanhar suas metas. A liderança responde na própria conversa privada.
+
+| Perfil | Acesso |
+| --- | --- |
+| Membro | Participa dos seus grupos, envia leituras e dúvidas, recebe respostas e apresenta seus próprios cupons. |
+| Líder | Cuida das leituras, dúvidas e entregas dos grupos atribuídos a ele. Também pode participar de outros grupos como membro. |
+| Administrador da igreja | Gerencia grupos, líderes, participantes e premiações somente da sua igreja. |
+
+Imagens, reflexões, dúvidas e respostas ficam disponíveis ao autor, à liderança responsável e à administração da mesma igreja. Outros participantes veem a celebração da leitura, sem receber o conteúdo privado nem e-mails dos colegas.
+
+Prêmios de grupo usam os pontos das leituras **daquele grupo, dentro do ciclo**; prêmios gerais usam o saldo da igreja. O administrador pode cadastrar metas e pódio na aba **Conquistas** do grupo. Ao atingir uma meta, o cupom aparece nessa aba e em **Meus Prêmios**. A liderança responsável registra a entrega uma única vez. O encerramento do ciclo emite os cupons de pódio, com desempate pela entrada no grupo e pelo identificador do membro. Perguntar ou responder não gera pontos.
+
+Veja os fluxos, regras de acesso e evidências em [Plataforma e grupos de conexão](docs/PLATAFORMA-E-GRUPOS.md).
+
 ## Começar
 
-Requer Node.js **22.13 ou mais recente** (validado com Node 24). Abra um terminal na raiz do projeto:
+Requer Node.js **22.13 ou mais recente** (validado com Node 24). No Windows, use uma pasta do seu usuário, como `C:\Users\SEU_USUARIO\Projetos\comunhao-teste`. Abra um terminal na raiz do projeto:
 
 ```powershell
 npm run setup
@@ -13,12 +31,32 @@ npm run dev
 
 O primeiro comando instala as dependências com os arquivos de versões fixadas. O segundo inicia API e Expo. Pressione **w** no terminal do Expo para abrir o aplicativo no navegador.
 
+### Instalação no Windows
+
+Para criar uma cópia de testes pelo PowerShell:
+
+```powershell
+Set-Location $env:USERPROFILE
+New-Item -ItemType Directory -Force Projetos | Out-Null
+Set-Location Projetos
+git clone --branch fix/auth-registration-audit https://github.com/SaruAkaza/app-da-igreja.git comunhao-teste
+Set-Location comunhao-teste
+npm run setup
+if ($LASTEXITCODE -eq 0) { npm run demo }
+```
+
+O instalador recusa projetos dentro de `C:\Windows`, onde podem ocorrer erros de permissão (`EPERM`). Se uma tentativa anterior ficou em `System32`, crie a nova cópia na pasta do usuário; o instalador não move nem apaga a cópia anterior.
+
+O SQLite desta versão inclui binários para Windows x64/arm64. O setup usa esses binários, valida uma conexão em memória e mantém os scripts de instalação das outras dependências. Isso evita a tentativa automática de `node-gyp rebuild` que exigia Visual Studio mesmo com o binário pronto. Use `npm run setup` na raiz para instalar o projeto.
+
 - Painel administrativo: http://localhost:3000/admin/
 - Aplicativo Mobile Web unificado: http://localhost:3000/ (ou http://localhost:8081 via Metro)
 - Saúde da API: http://localhost:3000/api/health
 - Celular: Expo Go compatível com SDK 58; use o QR Code do Expo. Em **Configurar conexão com o servidor**, informe `http://IP_DO_COMPUTADOR:3000`. Computador e celular devem estar na mesma rede.
 
 ### 🌐 Como Compartilhar com Outras Pessoas na Internet para Teste
+
+Para publicar a interface no **GitHub Pages**, siga [Publicação e conexão da API](docs/GITHUB-PAGES.md). O workflow já prepara o caminho `/app-da-igreja/` e as rotas. A API precisa de um endereço HTTPS separado para salvar contas, fotos, dúvidas e prêmios; sem essa conexão, a tela de entrada solicita o servidor.
 
 Você pode compartilhar o app de duas maneiras:
 
@@ -27,12 +65,13 @@ Com o servidor rodando, abra outro terminal e execute:
 ```bash
 npm run tunnel
 ```
-Isso gerará um link público seguro (ex: `https://sua-igreja.loca.lt`) que você pode enviar no WhatsApp para qualquer pessoa abrir no celular ou computador imediatamente!
+No Windows, esse comando usa o `cloudflared.exe` da raiz do projeto e gera um link HTTPS temporário em `trycloudflare.com`, que pode ser aberto no celular ou computador.
 
 #### 2. Build Unificado e Deploy em Nuvem (Render / Railway / VPS):
-Gere o build estático do aplicativo web:
+Compile a API e gere o aplicativo web para iniciar a implantação unificada:
 ```bash
-npm run build:web
+npm run build
+npm start
 ```
 O backend em Node.js servirá tudo em um único endereço:
 * `/` -> Aplicativo Mobile Web (membros e líderes)
@@ -65,7 +104,7 @@ Os códigos de confirmação aparecem na tela **somente na demonstração**. Ela
 
 1. Copie `backend/.env.example` para `backend/.env`. Preencha `JWT_SECRET` com uma chave aleatória de pelo menos 32 caracteres. Guarde essa chave: sua troca encerra as sessões existentes. Sem chave em desenvolvimento, uma chave temporária é criada a cada reinicialização.
 2. Configure `SMTP_URL` e `MAIL_FROM` para confirmação de e-mail e recuperação de senha. Por exemplo, uma URL de conexão SMTP fornecida pelo seu provedor. O aplicativo informa quando o serviço ainda não está configurado.
-3. Cadastre a igreja pelo botão **Levar o Comunhão para minha igreja** na entrada do aplicativo, ou entre com um administrador já existente. O painel exige perfil de administrador; líderes têm seu espaço no aplicativo.
+3. Cadastre a igreja pelo botão **Levar o Comunhão para minha igreja** na entrada do aplicativo e confirme o e-mail pastoral, ou entre com um administrador já existente. O código da igreja aparece antes de iniciar a sessão. O painel exige perfil de administrador; líderes têm seu espaço no aplicativo.
 4. No painel, crie grupos, compartilhe seus códigos e cadastre os prêmios disponíveis. Cada prêmio pertence ao trimestre atual; se não existir uma temporada para ele, o servidor a cria.
 5. Os membros criam a conta em duas etapas, confirmam o e-mail, entram na igreja/grupo e registram sua primeira leitura. Menores também precisam de autorização do responsável.
 
@@ -93,7 +132,26 @@ Faça backup consistente do SQLite e das duas pastas de uploads antes de uma atu
 npm run check
 ```
 
-Executa compilação do backend, testes de integração HTTP, checagem de tipos do aplicativo e lint. Os testes criam banco e uploads temporários, iniciam uma API em porta aleatória e removem seus próprios arquivos ao terminar. Eles nunca se conectam ao servidor da porta 3000 nem alteram o banco da igreja.
+Executa compilação do backend, 232 verificações de API, autenticação, configuração, entrega de códigos, jornada, isolamento entre igrejas e CEP, checagem de tipos do aplicativo e lint. Os testes criam banco e uploads temporários, iniciam uma API em porta aleatória e removem seus próprios arquivos ao terminar. Eles nunca se conectam ao servidor da porta 3000 nem alteram o banco da igreja. Os provedores de CEP são controlados nos testes; a suíte não depende da internet nem entrega mensagens a pessoas. O envio de códigos é exercitado pelo protocolo SMTP com uma caixa local de testes e `DEMO_MODE=false`.
+
+Para simular cadastro e login no desktop, iPhone e Android, instale opcionalmente Playwright e seus navegadores e execute:
+
+```powershell
+npm install --no-save --package-lock=false playwright
+npx playwright install chromium webkit
+npm run build:web
+npm run test:auth:browser
+```
+
+Esse runner inicia sua própria API, caixa SMTP e receptor de autorização parental no localhost, com banco temporário. Não precisa iniciar `npm run demo` nem configurar credenciais reais. São dez cenários por perfil: Chromium desktop, WebKit com perfil iPhone 13 e Chromium com perfil Pixel 7. As capturas ficam na pasta informada ao final; `COMUNHAO_TEST_ARTIFACTS` permite escolher outra. `COMUNHAO_TEST_PROFILES=desktop,android` seleciona perfis e `PLAYWRIGHT_CHROMIUM_PATH` permite usar um Chromium já instalado.
+
+Para simular a jornada completa — imagem, dúvida, resposta e premiação — com contas de membro, líder e administrador, execute também `npm run test:journey:browser`. O runner usa três perfis de navegador e sua própria API com banco temporário; não envia mensagens nem acessa dados de igrejas reais.
+
+A confirmação de e-mail é exigida no cadastro, com código de uso único e validade de 15 minutos. Esse fluxo não acrescenta um segundo código a cada login. Fora dos testes e da demonstração, a entrega depende de `SMTP_URL` e `MAIL_FROM` configurados.
+
+Para verificar os formulários no navegador, instale opcionalmente `playwright` com `npm install --no-save --package-lock=false playwright` e o Chromium com `npx playwright install chromium`. Com o build pronto, inicie **uma API de demonstração com DATA_DIR temporário** e execute `npm run test:browser`. O runner usa `http://127.0.0.1:3017` por padrão, configurável em `COMUNHAO_TEST_URL`, e só aceita localhost com demonstração habilitada. Ele cria contas fictícias nesse banco. `PLAYWRIGHT_CHROMIUM_PATH` seleciona um Chromium já instalado e `COMUNHAO_TEST_ARTIFACTS` define a pasta de capturas.
+
+Veja os problemas corrigidos, evidências e limites em [Validação de 23/10/2026](docs/VALIDACAO-2026-10-23.md) e na [revisão anterior](docs/VALIDACAO-2026-10-20.md). Clientes do app precisam acompanhar a atualização da API: os cadastros agora enviam `emailVerificationToken` devolvido pela confirmação do e-mail, e menores enviam `parentConsentToken` devolvido pela confirmação do responsável.
 
 Para exportar o aplicativo web, execute `npx expo export --platform web` na pasta `mobile`.
 

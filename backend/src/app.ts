@@ -9,9 +9,11 @@ import groupRoutes from './routes/groupRoutes.js';
 import devotionalRoutes from './routes/devotionalRoutes.js';
 import gamificationRoutes from './routes/gamificationRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
-import cepRoutes from './routes/cepRoutes.js';
+import questionRoutes from './routes/questionRoutes.js';
+import { createCepRoutes } from './routes/cepRoutes.js';
+import type { CepLookup } from './services/cepService.js';
 import { rateLimit } from './middleware/rateLimit.js';
-export function createApp() {
+export function createApp(services: { lookupCep?: CepLookup } = {}) {
   const app = express();
   app.disable('x-powered-by');
   const origins = (process.env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -25,7 +27,7 @@ export function createApp() {
   app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
   const authLimit = rateLimit(60);
   app.use('/api/auth', (req, res, next) => req.method === 'GET' ? next() : authLimit(req, res, next));
-  const textFields = new Set(['name','lastName','usernameHandle','email','password','confirmPassword','newPassword','churchCode','code','parentPhone','parentConsentCode','addressStreet','addressNeighborhood','addressCity','addressState','addressZipcode','avatarUrl','pastorName','churchName','slugCode','slug_code','city','state','denomination','cnpj','phone','addressFull','address_full','logo_url','title','description','category','book_or_theme','cover_image','invite_code','inviteCode','groupId','userId','leaderId','leader_id','role','couponCode','pastoralGuidance','reason','reactionType','startDate','endDate','partnerName','partner_name','tier','cycle_start_date','cycle_end_date','cycleStartDate','cycleEndDate','cycle_status','cycleStatus','group_id','reward_type','rewardType']);
+  const textFields = new Set(['name','lastName','usernameHandle','email','password','confirmPassword','newPassword','churchCode','code','parentPhone','parentConsentCode','parentConsentToken','emailVerificationToken','addressStreet','addressNeighborhood','addressCity','addressState','addressZipcode','avatarUrl','pastorName','churchName','slugCode','slug_code','city','state','denomination','cnpj','phone','addressFull','address_full','logo_url','title','description','category','book_or_theme','cover_image','invite_code','inviteCode','groupId','userId','leaderId','leader_id','role','couponCode','pastoralGuidance','reason','reactionType','startDate','endDate','partnerName','partner_name','tier','cycle_start_date','cycle_end_date','cycleStartDate','cycleEndDate','cycle_status','cycleStatus','group_id','reward_type','rewardType']);
   app.use(express.json({ limit: '64kb' }));
   app.use(express.urlencoded({ extended: false, limit: '64kb' }));
   app.use((req, res, next) => {
@@ -41,13 +43,14 @@ export function createApp() {
   app.use('/api/devotionals', devotionalRoutes);
   app.use('/api/gamification', gamificationRoutes);
   app.use('/api/admin', adminRoutes);
-  app.use('/api/cep', cepRoutes);
+  app.use('/api/questions', questionRoutes);
+  app.use('/api/cep', createCepRoutes(services.lookupCep));
   app.use('/admin', express.static(path.join(backendRoot, 'public/admin')));
   const mobileDist = path.resolve(backendRoot, '../mobile/dist');
   if (fs.existsSync(mobileDist)) {
     app.use(express.static(mobileDist));
     app.use('/app', express.static(mobileDist));
-    app.get(['/app', '/app/*', '/home', '/explore', '/feed', '/rewards', '/groups', '/leader', '/capture', '/feedbacks', '/register'], (_req, res) => {
+    app.get(['/app', '/app/*', '/home', '/explore', '/feed', '/rewards', '/groups', '/connections', '/group', '/leader', '/capture', '/feedbacks', '/register'], (_req, res) => {
       res.sendFile(path.join(mobileDist, 'index.html'));
     });
     app.get('/', (_req, res) => res.sendFile(path.join(mobileDist, 'index.html')));

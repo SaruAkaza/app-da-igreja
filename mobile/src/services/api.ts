@@ -14,10 +14,25 @@ export const api = create({
   timeout: 15000,
 });
 
-export const setApiBaseUrl = async (newUrl: string) => {
+export const needsApiConfiguration = () => Platform.OS === 'web' && process.env.EXPO_PUBLIC_PAGES === 'true' && typeof window !== 'undefined' && api.defaults.baseURL === window.location.origin;
+
+const normalizeApiUrl = (newUrl: string) => {
   const parsed = new URL(newUrl.trim());
   if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) throw new Error('Informe um endereço HTTP ou HTTPS válido, sem caminho ou senha.');
-  newUrl = parsed.origin;
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location.protocol === 'https:' && parsed.protocol !== 'https:') throw new Error('Informe um endereço HTTPS para conectar a partir deste aplicativo.');
+  return parsed.origin;
+};
+
+export const checkApiConnection = async (newUrl: string) => {
+  const baseURL = normalizeApiUrl(newUrl);
+  // A verificação pública nunca envia uma sessão ao endereço informado.
+  const response = await create({ baseURL, timeout: 15000 }).get('/api/health');
+  if (response.data?.status !== 'online' || typeof response.data?.demo_mode !== 'boolean') throw new Error('O endereço não corresponde a um servidor do Comunhão.');
+  return response.data as { demo_mode: boolean };
+};
+
+export const setApiBaseUrl = async (newUrl: string) => {
+  newUrl = normalizeApiUrl(newUrl);
   api.defaults.baseURL = newUrl;
   await AsyncStorage.setItem('church_custom_api_url', newUrl);
 };
@@ -25,7 +40,8 @@ export const setApiBaseUrl = async (newUrl: string) => {
 export const initApiConfig = async () => {
   const savedUrl = await AsyncStorage.getItem('church_custom_api_url');
   if (savedUrl) {
-    api.defaults.baseURL = savedUrl;
+    try { api.defaults.baseURL = normalizeApiUrl(savedUrl); }
+    catch { await AsyncStorage.removeItem('church_custom_api_url'); }
   }
 };
 
@@ -89,6 +105,19 @@ export interface Group {
   devotional_count?: number;
   is_member?: boolean;
   posted_today?: boolean;
+  cycle_status?: 'active' | 'completed';
+  can_manage?: boolean;
+  can_manage_rewards?: boolean;
+  group_points?: number;
+  open_questions?: number;
+  unread_answers?: number;
+}
+
+export interface GroupQuestion {
+  id: string; group_id: string; group_title: string; author_id: string; author_name: string;
+  body: string; devotional_id: string | null; passage_or_chapter?: string; image_url?: string;
+  answer: string | null; answered_by_name: string | null; answered_at: string | null;
+  created_at: string; status: 'open' | 'answered'; can_answer: boolean; unread: boolean;
 }
 
 export interface Devotional {

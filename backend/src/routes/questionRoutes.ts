@@ -1,0 +1,13 @@
+import { Router } from 'express';
+import { authenticateToken, requireRole } from '../middleware/auth.js';
+import { createQuestion, listQuestions, getQuestion, answerQuestion, markQuestionRead } from '../controllers/questionController.js';
+import { rateLimit } from '../middleware/rateLimit.js';
+const router = Router();
+router.use(authenticateToken);
+const writes = rateLimit(60);
+router.get('/', listQuestions);
+router.get('/:id', getQuestion);
+router.post('/', writes, createQuestion);
+router.post('/:id/answer', writes, requireRole('leader', 'church_admin', 'super_admin'), answerQuestion);
+router.post('/:id/read', writes, markQuestionRead);
+export default router;
